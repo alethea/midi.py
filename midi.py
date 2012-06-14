@@ -21,22 +21,25 @@ class Chunk(bytearray):
     def parse(source, id=None):
         chunk = Chunk()
         length = 9
+        mode = 'id'
         for item in source:
             if isinstance(item, int):
                 chunk.append(item)
             else:
                 chunk.extend(item)
 
-            if len(chunk) >= 4:
-                chunk.id = chunk[0:4].decode('ascii')
-                if id and id != chunk.id:
-                    raise MIDIError('{id} chunk not found.'.format(id=id))
-            if len(chunk) >= 8:
-                length = int.from_bytes(chunk[4:8], 'big') + 8
-            if len(chunk) >= length:
+            if mode == 'data' and len(chunk) >= length:
                 del chunk[length:] 
                 del chunk[:8]
                 break
+            elif mode == 'len' and len(chunk) >= 8:
+                length = int.from_bytes(chunk[4:8], 'big') + 8
+                mode = 'data'
+            elif mode == 'id' and len(chunk) >= 4:
+                chunk.id = chunk[0:4].decode('ascii')
+                if id and id != chunk.id:
+                    raise MIDIError('{id} chunk not found.'.format(id=id))
+                mode = 'len'
         else:
             raise MIDIError('Incompete {id} chunk. Read {got}/{total} bytes.'\
                     .format(got=len(chunk), total=length, id=chunk.id))
