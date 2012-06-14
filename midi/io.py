@@ -1,14 +1,5 @@
 #!/usr/bin/env python3
 
-"""
-A simple library for maniplating MIDI data as Python data structures and
-reading and writing data to Standard MIDI Format files.
-
-Note that this library was constructed without the official MIDI
-specification, and some structures may use a different name than the
-specification.
-"""
-
 import io
 import binascii
 
@@ -16,11 +7,14 @@ class MIDIError(Exception):
     pass
 
 class Chunk(bytearray):
+    def __init__(self, id=None, data=bytearray()):
+        self.id = id
+        self[:] = bytearray(data)
 
     @staticmethod
     def parse(source, id=None):
         chunk = Chunk()
-        length = 9
+        length = 8
         mode = 'id'
         for item in source:
             if isinstance(item, int):
@@ -58,11 +52,15 @@ class Chunk(bytearray):
     @raw.setter
     def raw(self, value):
         self.id = str(value, 'ascii')
-        self = value[8:]
+        self[:] = value[8:]
 
     def __bytes__(self):
         return bytes(self.raw)
 
     def __str__(self):
-        return str(binascii.hexlify(self), 'ascii')
+        return str(binascii.hexlify(self.raw), 'ascii')
+
+    def __repr__(self):
+        return 'Chunk({id}, {data})'.format(id=repr(self.id), 
+                data=repr(bytes(self)[8:]))
 
