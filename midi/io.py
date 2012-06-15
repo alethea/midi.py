@@ -2,9 +2,7 @@
 
 import io
 import binascii
-
-class MIDIError(Exception):
-    pass
+from .errors import MIDIError
 
 class Chunk(bytearray):
     def __init__(self, id=None, data=bytearray()):
