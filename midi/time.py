@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import numbers
+from .io import _var_int_parse, _var_int_bytes
 
 class Tempo:
     def __init__(self, source=None, **keywords):
@@ -19,6 +20,14 @@ class Tempo:
     @mpqn.setter
     def mpqn(self, value):
         self.bpm = 60000000 / value
+
+    @property
+    def bps(self):
+        return self.bpm / 60
+
+    @mpqn.setter
+    def bps(self, value):
+        self.bpm = value * 60
 
     def __str__(self):
         return '{bpm} BPM'.format(bpm=self.bpm)
@@ -118,4 +127,54 @@ class TimeDivision:
         else:
             value = 0x8000 | (self._frames << 8) | self._subframes
             return value.to_bytes(2, 'big')
+
+class Delta:
+    def __init__(self, source=None, time_division=None, tempo=None):
+        self.time_division = time_division
+        if tempo == None:
+            self.tempo = Tempo()
+        else:
+            self.tempo = tempo
+        if source == None:
+            self.secs = None
+        elif isinstance(source, numbers.Number):
+            self.ticks = source
+        else:
+            self.ticks = _var_int_parse(source)
+
+    @property
+    def ticks(self):
+        if self.secs != None and self.tempo != None and \
+                self.time_division != None:
+            if self.time_division.mode == 'ppqn':
+                return int(self.secs * self.tempo.bps * 
+                        self.time_division.ppqn)
+            else:
+                return int(self.time_division.pps * self.secs)
+        elif self.secs == 0:
+            return 0
+        else:
+            return None
+
+    @ticks.setter
+    def ticks(self, value):
+        if self.tempo != None and self.time_division != None:
+            if self.time_division.mode == 'ppqn':
+                self.secs = value / self.time_division.ppqn / self.tempo.bps
+            else:
+                self.secs = value / self.time_division.pps
+        elif value == 0:
+            self.secs = 0
+        else:
+            self.secs = None
+
+    def __str__(self):
+        return '{secs} s'.format(secs=self.secs)
+
+    def __bytes__(self):
+        ticks = self.ticks
+        if ticks == None:
+            return bytes(1)
+        else:
+            return _var_int_bytes(ticks)
 
