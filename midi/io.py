@@ -63,12 +63,12 @@ class Chunk(bytearray):
         return 'Chunk({id}, {data})'.format(id=repr(self.id), 
                 data=repr(bytes(self)[8:]))
 
-def _var_int_parse(iterable):
+def _var_int_parse(source):
     value = 0
-    if not isinstance(iterable, collections.Iterator):
-        iterable = iter(iterable)
+    if not isinstance(source, collections.Iterator):
+        source = iter(source)
     for i in range(4):
-        byte = next(iterable)
+        byte = next(source)
         value = (value << 7) | (byte & 0x7f)
         if ~byte & 0x80:
             break
