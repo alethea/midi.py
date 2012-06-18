@@ -2,6 +2,7 @@
 
 import io
 import binascii
+import collections
 from .errors import MIDIError
 
 class Chunk(bytearray):
@@ -61,4 +62,30 @@ class Chunk(bytearray):
     def __repr__(self):
         return 'Chunk({id}, {data})'.format(id=repr(self.id), 
                 data=repr(bytes(self)[8:]))
+
+def _var_int_parse(iterable):
+    value = 0
+    if not isinstance(iterable, collections.Iterator):
+        iterable = iter(iterable)
+    for i in range(4):
+        byte = next(iterable)
+        value = (value << 7) | (byte & 0x7f)
+        if ~byte & 0x80:
+            break
+    else:
+        raise MIDIError('Incomplete variable length integer.')
+    return value
+
+def _var_int_bytes(value):
+    array = bytearray()
+    for i in range(4):
+        array.append((value & 0x7f) | 0x80)
+        value = value >> 7
+        if value == 0:
+            break
+    else:
+        raise MIDIError('Too long to be a variable length integer.')
+    array[0] = array[0] & 0x7f
+    array = reversed(array)
+    return bytes(array)
 
