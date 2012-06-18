@@ -3,7 +3,7 @@
 import io
 import binascii
 import collections
-from .errors import MIDIError
+from .error import MIDIError
 
 class Chunk(bytearray):
     def __init__(self, id=None, data=bytearray()):
