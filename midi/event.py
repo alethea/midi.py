@@ -50,9 +50,28 @@ class ChannelEvent(Event):
             if type not in events:
                 raise MIDIError('Encountered an unkown event: {status:X}.'\
                         .format(status=status))
-            return events[type]._parse(source)
+            event = events[type]._parse(source)
+            event.channel = channel
+            return event
         else:
             return cls(next(source), next(source))
+
+    def __bytes__(self):
+        array = bytearray()
+        
+        statuses = {
+                NoteOff: 0x80,
+                NoteOn: 0x90,
+                NoteAftertouch: 0xa0,
+                Controller: 0xb0,
+                ProgramChange: 0xc0,
+                ChannelAftertouch: 0xd0,
+                PitchBend: 0xe0 }
+
+        array.extend(bytes(self.delta))
+        array.append(statuses[type(self)] | self.channel)
+        array.extend(self._parameters())
+        return bytes(array)
 
 class NoteOff(ChannelEvent):
     def __init__(self, note=None, velocity=None, **keywords):
