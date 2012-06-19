@@ -4,12 +4,12 @@ import collections
 from .error import MIDIError
 from . import time
 
-class Event(time.Delta):
+class Event:
     def __init__(self, **keywords):
         delta = keywords.get('delta', None)
         time_division = keywords.get('time_division', None)
         tempo = keywords.get('tempo', None)
-        super().__init__(delta, time_division, tempo)
+        self.delta = time.Delta(delta, time_division, tempo)
     
     @staticmethod
     def parse(source):
@@ -23,6 +23,14 @@ class Event(time.Delta):
             event = SysExEvent._parse(source, status)
         else:
             event = ChannelEvent._parse(source, status)
-        event.ticks = ticks
+        event.delta.ticks = ticks
         return event
 
+class ChannelEvent(Event):
+    pass
+
+class MetaEvent(Event):
+    pass
+
+class SysExEvent(Event):
+    pass
