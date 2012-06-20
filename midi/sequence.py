@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 
 import collections
-from . import event
-from . import time
+from . import event, time, io
 
 class Track(list):
 
@@ -53,4 +52,32 @@ class Header:
         array.extend(bytes(self.time_division))
         return bytes(array)
 
+
+class Sequence(list):
+    def __init__(self, header=None, tracks=list()):
+        super().__init__(tracks)
+        self.header=header
+
+    @staticmethod
+    def parse(source):
+        sequence = Sequence()
+        if not isinstance(source, collections.Iterator):
+            source = iter(source)
+        chunk = io.Chunk.parse(source, id='MThd')
+        sequence.header = Header.parse(chunk)
+        for i in range(sequence.header.tracks):
+            chunk = io.Chunk.parse(source)
+            if chunk.id == 'MTrk':
+                track = Track.parse(chunk)
+                sequence.append(track)
+        return sequence
+
+    def __bytes__(self):
+        array = bytearray()
+        chunk = io.Chunk('MThd', bytes(self.header))
+        array.extend(bytes(chunk))
+        for track in self:
+            chunk = io.Chunk('MTrk', bytes(track))
+            array.extend(bytes(chunk))
+        return bytes(array)
 
