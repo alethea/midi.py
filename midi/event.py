@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import numbers
 import collections
 from .error import MIDIError
 from . import time, io
@@ -13,7 +14,7 @@ class Event:
             self.delta = delta
         else:
             self.delta = time.Delta(delta, time_division, tempo)
-    
+
     @staticmethod
     def parse(source):
         if not isinstance(source, collections.Iterator):
@@ -147,7 +148,117 @@ class PitchBend(ChannelEvent):
         return(self.value & 0x7f, (self.value >> 7) & 0x7f )
 
 class MetaEvent(Event):
+
+    @classmethod
+    def _parse(cls, source):
+        if cls == MetaEvent:
+            type = next(source)
+
+            events = {
+                    0x00: SequenceNumber,
+                    0x01: Text,
+                    0x02: Copyright,
+                    0x03: Name,
+                    0x04: Instrument,
+                    0x05: Lyrics,
+                    0x06: Marker,
+                    0x07: CuePoint,
+                    0x20: ChannelPrefix,
+                    0x2f: EndTrack,
+                    0x51: SetTempo,
+                    0x54: SMPTEOffset,
+                    0x58: TimeSignature,
+                    0x59: KeySignature,
+                    0x7f: ProprietaryEvent }
+
+            return events[type]._parse(source)
+        else:
+            length = io._var_int_parse(source)
+            data = bytearray()
+            for i in range(length):
+                data.append(next(source))
+            return cls(data)
+
+class TextMetaEvent(MetaEvent):
+    def __init__(self, source=None, **keywords):
+        super().__init__(**keywords)
+        try:
+            self.text = str(source, 'ascii')
+        except TypeError:
+            self.text = source
+
+class SequenceNumber(MetaEvent):
+    def __init__(self, source=None, **keywords):
+        super().__init__(**keywords)
+        try:
+            self.number = int.from_bytes(source, 'big')
+        except TypeError:
+            self.number = source
+
+class Text(TextMetaEvent):
     pass
+
+class Copyright(TextMetaEvent):
+    pass
+
+class Name(TextMetaEvent):
+    pass
+
+class Instrument(TextMetaEvent):
+    pass
+
+class Lyrics(TextMetaEvent):
+    pass
+
+class Marker(TextMetaEvent):
+    pass
+
+class CuePoint(TextMetaEvent):
+    pass
+
+class ChannelPrefix(MetaEvent):
+    def __init__(self, source=None, **keywords):
+        super().__init__(**keywords)
+        try:
+            self.channel = int.from_bytes(source, 'big')
+        except TypeError:
+            self.channel = source
+
+class EndTrack(MetaEvent):
+    def __init__(self, source=None, **keywords):
+        super().__init__(**keywords)
+
+class SetTempo(MetaEvent):
+    def __init__(self, source=None, **keywords):
+        super().__init(**keywords)
+        try:
+            mpqn = int.from_bytes(source, 'big')
+        except TypeError:
+            mpqn = source
+        if isinstance(mpqn, numbers.Number):
+            self.tempo = Tempo(mpqn=mpqn)
+        else:
+            self.tempo = None
+
+class SMPTEOffset(MetaEvent):
+    def __init__(self, source=None, **keywords):
+        super().__init__(**keywords)
+        self.data = source
+
+class TimeSignature(MetaEvent):
+    def __init__(self, source=None, **keywords):
+        super().__init__(**keywords)
+        self.data = source
+
+class KeySignature(MetaEvent):
+    def __init__(self, source=None, **keywords):
+        super().__init__(**keywords)
+        self.data = source
+
+class ProprietaryEvent(MetaEvent):
+    def __init__(self, source=None, **keywords):
+        super().__init__(**keywords)
+        self.data = source
 
 class SysExEvent(Event):
     pass

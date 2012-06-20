@@ -6,8 +6,8 @@ from .io import _var_int_parse, _var_int_bytes
 class Tempo:
     def __init__(self, source=None, **keywords):
         if source == None:
+            self.bpm = keywords.get('bpm', None)
             self.mpqn = keywords.get('mpqn', 500000)
-            self.bpm = keywords.get('bpm', 120)
         elif isinstance(source, numbers.Number):
             self.bpm = source
         else:
