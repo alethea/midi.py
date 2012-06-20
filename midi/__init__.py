@@ -1,1 +1,1 @@
-__all__ = ['io', 'time', 'errors']
+__all__ = ['io', 'time', 'error', 'event', 'sequence']

@@ -270,18 +270,18 @@ class EndTrack(MetaEvent):
 
 class SetTempo(MetaEvent):
     def __init__(self, source=None, **keywords):
-        super().__init(**keywords)
+        super().__init__(**keywords)
         try:
             mpqn = int.from_bytes(source, 'big')
         except TypeError:
             mpqn = source
         if isinstance(mpqn, numbers.Number):
-            self.tempo = Tempo(mpqn=mpqn)
+            self.tempo = time.Tempo(mpqn=mpqn)
         else:
             self.tempo = None
 
     def _bytes(self):
-        return self.Tempo.mpqn.to_bytes(3, 'big')
+        return self.tempo.mpqn.to_bytes(3, 'big')
 
 class SMPTEOffset(MetaEvent):
     def __init__(self, source=None, **keywords):

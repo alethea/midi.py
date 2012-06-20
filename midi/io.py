@@ -7,8 +7,8 @@ from .error import MIDIError
 
 class Chunk(bytearray):
     def __init__(self, id=None, data=bytearray()):
+        super().__init__(data)
         self.id = id
-        self[:] = bytearray(data)
 
     @staticmethod
     def parse(source, id=None):
