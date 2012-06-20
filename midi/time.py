@@ -25,7 +25,7 @@ class Tempo:
     def bps(self):
         return self.bpm / 60
 
-    @mpqn.setter
+    @bps.setter
     def bps(self, value):
         self.bpm = value * 60
 
@@ -47,15 +47,11 @@ class TimeDivision:
             self.ppqn = keywords.get('ppqn', None)
             self.frames = keywords.get('frames', None)
             self.subframes = keywords.get('subframes', None)
-            if self.ppqn == None:
-                self.mode = 'pps'
         elif isinstance(source, numbers.Number):
-            self.mode = 'ppqn'
             self.ppqn = source
         else:
             bits = int.from_bytes(source, 'big')
             if bits & 0x8000:
-                self.mode = 'pps'
                 self.frames = (bits & 0x7f00) >> 8
                 if self.frames == 29:
                     self.frames = 29.97
@@ -110,7 +106,7 @@ class TimeDivision:
 
     def __str__(self):
         if self.mode == 'ppqn':
-            return '{ppqn] PPQN'.format(ppqn=self.ppqn)
+            return '{ppqn} PPQN'.format(ppqn=self.ppqn)
         else:
             return '{pps} PPS'.format(pps=self.pps)
 
@@ -131,12 +127,11 @@ class TimeDivision:
 class Delta:
     def __init__(self, source=None, time_division=None, tempo=None):
         self.time_division = time_division
-        if tempo == None:
-            self.tempo = Tempo()
-        else:
-            self.tempo = tempo
+        self.tempo = tempo
+        self._secs = None
+        self._ticks = None
         if source == None:
-            self.secs = None
+            self.ticks = None
         elif isinstance(source, numbers.Number):
             self.ticks = source
         else:
@@ -144,32 +139,63 @@ class Delta:
 
     @property
     def ticks(self):
-        if self.secs != None and self.tempo != None and \
-                self.time_division != None:
-            if self.time_division.mode == 'ppqn':
-                return int(self.secs * self.tempo.bps * 
-                        self.time_division.ppqn)
-            else:
-                return int(self.time_division.pps * self.secs)
-        elif self.secs == 0:
-            return 0
-        else:
-            return None
+        self._update_ticks()
+        return self._ticks
 
     @ticks.setter
     def ticks(self, value):
-        if self.tempo != None and self.time_division != None:
+        self._ticks = value
+        self._update_secs()
+
+    @ticks.deleter
+    def ticks(self):
+        del self._ticks
+
+    @property
+    def secs(self):
+        self._update_ticks()
+        return self._secs
+
+    @secs.setter
+    def secs(self, value):
+        self._secs = value
+        self._update_ticks()
+
+    @secs.deleter
+    def secs(self):
+        del self._secs
+
+    def _update_ticks(self):
+        if self._secs != None and self.time_division != None:
             if self.time_division.mode == 'ppqn':
-                self.secs = value / self.time_division.ppqn / self.tempo.bps
+                if self.tempo != None:
+                    self._ticks = int(self._secs * self.tempo.bps *
+                            self.time_division.ppqn)
             else:
-                self.secs = value / self.time_division.pps
-        elif value == 0:
-            self.secs = 0
-        else:
-            self.secs = None
+                self._ticks = int(self._secs * self.time_division.pps)
+        elif self._secs == 0:
+            self._ticks = 0
+        elif self._ticks != None and self._secs == None:
+            self._update_secs()
+
+    def _update_secs(self):
+        if self._ticks != None and self.time_division != None:
+            if self.time_division.mode == 'ppqn':
+                if self.tempo != None:
+                    self._secs = self._ticks / self.time_division.ppqn / \
+                            self.tempo.bps
+            else:
+                self._secs = self._ticks / self.time_division.pps
+        elif self._ticks == 0:
+            self._secs = 0
+        elif self._secs != None and self._ticks == None:
+            self._update_ticks()
 
     def __str__(self):
         return '{secs} s'.format(secs=self.secs)
+
+    def __repr__(self):
+        return 'Delta({ticks})'.format(ticks=self.ticks)
 
     def __bytes__(self):
         ticks = self.ticks
