@@ -126,8 +126,8 @@ class TimeDivision:
 
 class Delta:
     def __init__(self, source=None, time_division=None, tempo=None):
-        self.time_division = time_division
-        self.tempo = tempo
+        self._time_division = time_division
+        self._tempo = tempo
         self._secs = None
         self._ticks = None
         if source == None:
@@ -139,7 +139,6 @@ class Delta:
 
     @property
     def ticks(self):
-        self._update_ticks()
         return self._ticks
 
     @ticks.setter
@@ -153,7 +152,6 @@ class Delta:
 
     @property
     def secs(self):
-        self._update_ticks()
         return self._secs
 
     @secs.setter
@@ -165,27 +163,53 @@ class Delta:
     def secs(self):
         del self._secs
 
+    @property
+    def tempo(self):
+        return self._tempo
+
+    @tempo.setter
+    def tempo(self, value):
+        self._tempo = value
+        self._update_ticks()
+
+    @tempo.deleter
+    def tempo(self):
+        del self._tempo
+
+    @property
+    def time_division(self):
+        return self._time_division
+
+    @time_division.setter
+    def time_division(self, value):
+        self._time_division = value
+        self._update_ticks()
+
+    @time_division.deleter
+    def time_division(self):
+        del self._time_division
+
     def _update_ticks(self):
-        if self._secs != None and self.time_division != None:
-            if self.time_division.mode == 'ppqn':
-                if self.tempo != None:
-                    self._ticks = int(self._secs * self.tempo.bps *
-                            self.time_division.ppqn)
+        if self._secs != None and self._time_division != None:
+            if self._time_division.mode == 'ppqn':
+                if self._tempo != None:
+                    self._ticks = int(self._secs * self._tempo.bps *
+                            self._time_division.ppqn)
             else:
-                self._ticks = int(self._secs * self.time_division.pps)
+                self._ticks = int(self._secs * self._time_division.pps)
         elif self._secs == 0:
             self._ticks = 0
         elif self._ticks != None and self._secs == None:
             self._update_secs()
 
     def _update_secs(self):
-        if self._ticks != None and self.time_division != None:
-            if self.time_division.mode == 'ppqn':
-                if self.tempo != None:
-                    self._secs = self._ticks / self.time_division.ppqn / \
-                            self.tempo.bps
+        if self._ticks != None and self._time_division != None:
+            if self._time_division.mode == 'ppqn':
+                if self._tempo != None:
+                    self._secs = self._ticks / self._time_division.ppqn / \
+                            self._tempo.bps
             else:
-                self._secs = self._ticks / self.time_division.pps
+                self._secs = self._ticks / self._time_division.pps
         elif self._ticks == 0:
             self._secs = 0
         elif self._secs != None and self._ticks == None:

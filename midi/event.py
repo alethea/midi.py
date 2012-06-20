@@ -278,7 +278,7 @@ class SetTempo(MetaEvent):
         if isinstance(mpqn, numbers.Number):
             self.tempo = time.Tempo(mpqn=mpqn)
         else:
-            self.tempo = None
+            self.tempo = source
 
     def _bytes(self):
         return self.tempo.mpqn.to_bytes(3, 'big')
