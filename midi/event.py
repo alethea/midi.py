@@ -179,6 +179,34 @@ class MetaEvent(Event):
                 data.append(next(source))
             return cls(data)
 
+    def __bytes__(self):
+        array = bytearray()
+        data = self._bytes()
+
+        types = {
+                SequenceNumber: 0x00,
+                Text: 0x01,
+                Copyright: 0x02,
+                Name: 0x03,
+                Instrument: 0x04,
+                Lyrics: 0x05,
+                Marker: 0x06,
+                CuePoint: 0x07,
+                ChannelPrefix: 0x20,
+                EndTrack: 0x2f,
+                SetTempo: 0x51,
+                SMPTEOffset: 0x54,
+                TimeSignature: 0x58,
+                KeySignature: 0x59,
+                ProprietaryEvent: 0x7f }
+
+        array.extend(bytes(self.delta))
+        array.append(0xff)
+        array.append(types[type(self)])
+        array.extend(io._var_int_bytes(len(data)))
+        array.extend(data)
+        return bytes(array)
+
 class TextMetaEvent(MetaEvent):
     def __init__(self, source=None, **keywords):
         super().__init__(**keywords)
@@ -187,6 +215,9 @@ class TextMetaEvent(MetaEvent):
         except TypeError:
             self.text = source
 
+    def _bytes(self):
+        return self.text.encode('ascii')
+
 class SequenceNumber(MetaEvent):
     def __init__(self, source=None, **keywords):
         super().__init__(**keywords)
@@ -194,6 +225,9 @@ class SequenceNumber(MetaEvent):
             self.number = int.from_bytes(source, 'big')
         except TypeError:
             self.number = source
+
+    def _bytes(self):
+        return self.number.to_bytes(2, 'big')
 
 class Text(TextMetaEvent):
     pass
@@ -224,9 +258,15 @@ class ChannelPrefix(MetaEvent):
         except TypeError:
             self.channel = source
 
+    def _bytes(self):
+        return self.channel.to_bytes(1, 'big')
+
 class EndTrack(MetaEvent):
     def __init__(self, source=None, **keywords):
         super().__init__(**keywords)
+
+    def _bytes(self):
+        return bytes()
 
 class SetTempo(MetaEvent):
     def __init__(self, source=None, **keywords):
@@ -240,25 +280,40 @@ class SetTempo(MetaEvent):
         else:
             self.tempo = None
 
+    def _bytes(self):
+        return self.Tempo.mpqn.to_bytes(3, 'big')
+
 class SMPTEOffset(MetaEvent):
     def __init__(self, source=None, **keywords):
         super().__init__(**keywords)
         self.data = source
+
+    def _bytes(self):
+        return self.data
 
 class TimeSignature(MetaEvent):
     def __init__(self, source=None, **keywords):
         super().__init__(**keywords)
         self.data = source
 
+    def _bytes(self):
+        return self.data
+
 class KeySignature(MetaEvent):
     def __init__(self, source=None, **keywords):
         super().__init__(**keywords)
         self.data = source
 
+    def _bytes(self):
+        return self.data
+
 class ProprietaryEvent(MetaEvent):
     def __init__(self, source=None, **keywords):
         super().__init__(**keywords)
         self.data = source
+
+    def _bytes(self):
+        return self.data
 
 class SysExEvent(Event):
     pass
