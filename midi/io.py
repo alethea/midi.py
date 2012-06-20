@@ -13,9 +13,12 @@ class Chunk(bytearray):
     @staticmethod
     def parse(source, id=None):
         chunk = Chunk()
+        if not isinstance(source, collections.Iterator):
+            source = iter(source)
         length = 8
         mode = 'id'
-        for item in source:
+        while True:
+            item = next(source)
             if isinstance(item, int):
                 chunk.append(item)
             else:
