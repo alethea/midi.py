@@ -31,8 +31,7 @@ class Event:
         return event
 
     def __str__(self):
-        return '{ticks:>4} {repr}'.format(
-                ticks=self.delta.ticks, repr=repr(self))
+        return repr(self)
 
 class ChannelEvent(Event):
     def __init__(self, **keywords):
@@ -313,7 +312,7 @@ class SetTempo(MetaEvent):
             self.tempo = source
 
     def __repr__(self):
-        return '{name}({tempo})'.format(
+        return '{name}({tempo!r})'.format(
                 name=type(self).__name__, tempo=self.tempo)
 
     def _bytes(self):
@@ -381,7 +380,7 @@ class Tempo:
         self.bpm = value * 60
 
     def __str__(self):
-        return '{bpm} BPM'.format(bpm=self.bpm)
+        return str(self.bpm)
 
     def __repr__(self):
         return 'Tempo({bpm})'.format(bpm=self.bpm)
@@ -457,9 +456,9 @@ class TimeDivision:
 
     def __str__(self):
         if self.mode == 'ppqn':
-            return '{ppqn} PPQN'.format(ppqn=self.ppqn)
+            return str(self.ppqn)
         else:
-            return '{pps} PPS'.format(pps=self.pps)
+            return str(self.pps)
 
     def __repr__(self):
         if self.mode == 'ppqn':
@@ -567,7 +566,7 @@ class Delta:
             self._update_ticks()
 
     def __str__(self):
-        return '{secs} s'.format(secs=self.secs)
+        return str(self.ticks)
 
     def __repr__(self):
         return 'Delta({ticks})'.format(ticks=self.ticks)
