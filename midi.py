@@ -30,6 +30,10 @@ class Event:
         event.delta.ticks = ticks
         return event
 
+    def __str__(self):
+        return '{ticks:>4} {repr}'.format(
+                ticks=self.delta.ticks, repr=repr(self))
+
 class ChannelEvent(Event):
     def __init__(self, **keywords):
         super().__init__(**keywords)
@@ -56,6 +60,15 @@ class ChannelEvent(Event):
             return event
         else:
             return cls(next(source), next(source))
+
+    def __repr__(self):
+        parameters = self._parameters()
+        if len(parameters) == 1:
+            return '{name}({value})'.format(
+                    name=type(self).__name__, value=parameters[0])
+        else:
+            return '{name}{parameters}'.format(
+                    name=type(self).__name__, parameters=tuple(parameters))
 
     def __bytes__(self):
         array = bytearray()
@@ -179,6 +192,10 @@ class MetaEvent(Event):
                 data.append(next(source))
             return cls(data)
 
+    def __repr__(self):
+        return '{name}({data!r})'.format(
+                name=type(self).__name__, data=self._bytes())
+
     def __bytes__(self):
         array = bytearray()
         data = self._bytes()
@@ -215,6 +232,10 @@ class TextMetaEvent(MetaEvent):
         except TypeError:
             self.text = source
 
+    def __repr__(self):
+        return '{name}({text!r})'.format(
+                name=type(self).__name__, text=self.text)
+
     def _bytes(self):
         return self.text.encode('ascii')
 
@@ -225,6 +246,10 @@ class SequenceNumber(MetaEvent):
             self.number = int.from_bytes(source, 'big')
         except TypeError:
             self.number = source
+
+    def __repr__(self):
+        return '{name}({number})'.format(
+                name=type(self).__name__, number=self.number)
 
     def _bytes(self):
         return self.number.to_bytes(2, 'big')
@@ -258,12 +283,19 @@ class ChannelPrefix(MetaEvent):
         except TypeError:
             self.channel = source
 
+    def __repr__(self):
+        return '{name}({channel})'.format(
+                name=type(self).__name__, channel=self.channel)
+
     def _bytes(self):
         return self.channel.to_bytes(1, 'big')
 
 class EndTrack(MetaEvent):
     def __init__(self, source=None, **keywords):
         super().__init__(**keywords)
+
+    def __repr__(self):
+        return '{name}()'.format(name=type(self).__name__)
 
     def _bytes(self):
         return bytes()
@@ -279,6 +311,10 @@ class SetTempo(MetaEvent):
             self.tempo = Tempo(mpqn=mpqn)
         else:
             self.tempo = source
+
+    def __repr__(self):
+        return '{name}({tempo})'.format(
+                name=type(self).__name__, tempo=self.tempo)
 
     def _bytes(self):
         return self.tempo.mpqn.to_bytes(3, 'big')
