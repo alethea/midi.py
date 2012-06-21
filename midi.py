@@ -579,7 +579,7 @@ class Delta:
             return _var_int_bytes(ticks)
 
 class Sequence(list):
-    def __init__(self, header=None, tracks=list()):
+    def __init__(self, tracks=list(), header=None):
         super().__init__(tracks)
         self.header=header
 
@@ -594,6 +594,7 @@ class Sequence(list):
             chunk = Chunk.parse(source)
             if chunk.id == 'MTrk':
                 track = Track.parse(chunk)
+                track.time_division = sequence.header.time_division
                 sequence.append(track)
         return sequence
 
@@ -607,6 +608,10 @@ class Sequence(list):
         return bytes(array)
 
 class Track(list):
+    def __init__(self, events=list(), time_division=None, tempo=None):
+        super().__init__(events)
+        self.time_division = time_division
+        self.tempo = tempo
 
     @staticmethod
     def parse(source):
@@ -614,15 +619,17 @@ class Track(list):
         if not isinstance(source, collections.Iterator):
             source = iter(source)
         while True:
-            item = Event.parse(source)
-            if isinstance(item, EndTrack):
+            event = Event.parse(source)
+            if isinstance(event, EndTrack):
                 break
-            track.append(item)
+            track.append(event)
         return track
 
     def abs(self, event):
         time = 0
         if isinstance(event, numbers.Number):
+            if event < 0:
+                event = len(self) - event
             for i in range(event + 1):
                 time = time + self[i].delta.ticks
         else:
@@ -636,6 +643,10 @@ class Track(list):
         if end == None:
             end = start
             start = 0
+        if start < 0:
+            start = len(self) - start
+        if end < 0:
+            end = len(self) - end
         track = Track()
         time = 0
         for event in self:
@@ -645,6 +656,34 @@ class Track(list):
             if time >= start:
                 track.append(event)
         return track
+
+    @property
+    def time_division(self):
+        return self._time_division
+
+    @time_division.setter
+    def time_division(self, value):
+        self._time_division = value
+        for event in self:
+            event.delta.time_division = self._time_division
+
+    @time_division.deleter
+    def time_division(self):
+        del self._time_division
+
+    @property
+    def tempo(self):
+        return self._tempo
+
+    @tempo.setter
+    def tempo(self, value):
+        self._tempo = value
+        for event in self:
+            event.delta.tempo = self._tempo
+
+    @tempo.deleter
+    def tempo(self):
+        del self._tempo
 
     def __bytes__(self):
         array = bytearray()
