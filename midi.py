@@ -620,6 +620,32 @@ class Track(list):
             track.append(item)
         return track
 
+    def abs(self, event):
+        time = 0
+        if isinstance(event, numbers.Number):
+            for i in range(event + 1):
+                time = time + self[i].delta.ticks
+        else:
+            for item in self:
+                time = time + item.delta.ticks
+                if item is event:
+                    break
+        return time
+
+    def slice(self, start, end=None):
+        if end == None:
+            end = start
+            start = 0
+        track = Track()
+        time = 0
+        for event in self:
+            time = time + event.delta.ticks
+            if time >= end:
+                break
+            if time >= start:
+                track.append(event)
+        return track
+
     def __bytes__(self):
         array = bytearray()
         for item in self:
