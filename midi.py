@@ -636,11 +636,13 @@ class Track(list):
             track.append(event)
         return track
 
-    def abs(self, event):
+    def duration(self, event):
         time = 0
+        if len(self) = 0:
+            return 0
         if isinstance(event, numbers.Number):
             if event < 0:
-                event = len(self) - event
+                event = len(self) + event
             for i in range(event + 1):
                 time = time + self[i].delta.ticks
         else:
@@ -648,6 +650,8 @@ class Track(list):
                 time = time + item.delta.ticks
                 if item is event:
                     break
+            else:
+                return 0
         return time
 
     def slice(self, start, end=None):
@@ -655,9 +659,9 @@ class Track(list):
             end = start
             start = 0
         if start < 0:
-            start = len(self) - start
+            start = len(self) + start
         if end < 0:
-            end = len(self) - end
+            end = len(self) + end
         track = Track()
         time = 0
         for event in self:
