@@ -4,6 +4,7 @@ import io
 import binascii
 import collections
 import numbers
+import copy
 
 class Event:
     def __init__(self, **keywords):
@@ -477,8 +478,9 @@ class TimeDivision:
 class Delta:
     def __init__(self, source=None, division=None, tempo=None):
         self._division = division
+        self._old_division = division
         self._tempo = tempo
-        self._secs = None
+        self._old_tempo = tempo
         self._ticks = None
         if source == None:
             self.ticks = None
@@ -489,12 +491,13 @@ class Delta:
 
     @property
     def ticks(self):
-        return self._ticks
+        self._update_division()
+        self._update_tempo()
+        return int(self._ticks)
 
     @ticks.setter
     def ticks(self, value):
         self._ticks = value
-        self._update_secs()
 
     @ticks.deleter
     def ticks(self):
@@ -502,29 +505,22 @@ class Delta:
 
     @property
     def secs(self):
-        return self._secs
+        if self._division != None:
+            if self._division.mode == 'ppqn':
+                if self._tempo != None:
+                    return self.ticks / self._division.ppqn / self._tempo.bps
+            else:
+                return self.ticks / self._division.pps
+        return None
 
     @secs.setter
     def secs(self, value):
-        self._secs = value
-        self._update_ticks()
-
-    @secs.deleter
-    def secs(self):
-        del self._secs
-
-    @property
-    def tempo(self):
-        return self._tempo
-
-    @tempo.setter
-    def tempo(self, value):
-        self._tempo = value
-        self._update_ticks()
-
-    @tempo.deleter
-    def tempo(self):
-        del self._tempo
+        if self._division != None:
+            if self._division.mode == 'ppqn':
+                if self._tempo != None:
+                    self.ticks = self._division.ppqn * self._tempo.bps * value
+            else:
+                self.ticks = self._division.pps * value
 
     @property
     def division(self):
@@ -533,37 +529,52 @@ class Delta:
     @division.setter
     def division(self, value):
         self._division = value
-        self._update_ticks()
+        self._update_division()
 
     @division.deleter
     def division(self):
         del self._division
+        del self._old_division
 
-    def _update_ticks(self):
-        if self._secs != None and self._division != None:
-            if self._division.mode == 'ppqn':
-                if self._tempo != None:
-                    self._ticks = int(self._secs * self._tempo.bps *
-                            self._division.ppqn)
-            else:
-                self._ticks = int(self._secs * self._division.pps)
-        elif self._secs == 0:
-            self._ticks = 0
-        elif self._ticks != None and self._secs == None:
-            self._update_secs()
+    @property
+    def tempo(self):
+        return self._tempo
 
-    def _update_secs(self):
-        if self._ticks != None and self._division != None:
-            if self._division.mode == 'ppqn':
-                if self._tempo != None:
-                    self._secs = self._ticks / self._division.ppqn / \
-                            self._tempo.bps
-            else:
-                self._secs = self._ticks / self._division.pps
-        elif self._ticks == 0:
-            self._secs = 0
-        elif self._secs != None and self._ticks == None:
-            self._update_ticks()
+    @tempo.setter
+    def tempo(self, value):
+        self._tempo = value
+        self._update_tempo()
+
+    @tempo.deleter
+    def tempo(self):
+        del self._tempo
+        del self._old_tempo
+
+    def _update_division(self):
+        if self._division != None and self._ticks != None:
+            if self._old_division != None:
+                if self._division.mode == self._old_division.mode:
+                    if self._division.mode == 'ppqn':
+                        ratio = self._division.ppqn / self._old_division.ppqn
+                    else:
+                        ratio = self._division.pps / self._old_division.pps
+                    self._ticks = self._ticks * ratio
+                elif self._tempo != None:
+                    if self._division.mode == 'ppqn':
+                        ratio = self._division.ppqn / \
+                                (self._old_division.pps / self._tempo.bps)
+                    else:
+                        ratio = self._division.pps / \
+                                (self._tempo.bps / self._old_division.ppqn)
+                    self._ticks = self._ticks * ratio
+            self._old_division = copy.deepcopy(self._division)
+
+    def _update_tempo(self):
+        if self._tempo != None and self._ticks != None:
+            if self._old_tempo != None and self._division.mode == 'pps':
+                self._ticks = self._ticks * \
+                        self._tempo.bpm / self._old_tempo.bpm
+            self._old_tempo = copy.deepcopy(self._tempo)
 
     def __str__(self):
         return str(self.ticks)
