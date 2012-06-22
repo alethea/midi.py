@@ -8,12 +8,12 @@ import numbers
 class Event:
     def __init__(self, **keywords):
         delta = keywords.get('delta', None)
-        time_division = keywords.get('time_division', None)
+        division = keywords.get('division', None)
         tempo = keywords.get('tempo', None)
         if isinstance(delta, Delta):
             self.delta = delta
         else:
-            self.delta = Delta(delta, time_division, tempo)
+            self.delta = Delta(delta, division, tempo)
 
     @staticmethod
     def parse(source):
@@ -475,8 +475,8 @@ class TimeDivision:
             return value.to_bytes(2, 'big')
 
 class Delta:
-    def __init__(self, source=None, time_division=None, tempo=None):
-        self._time_division = time_division
+    def __init__(self, source=None, division=None, tempo=None):
+        self._division = division
         self._tempo = tempo
         self._secs = None
         self._ticks = None
@@ -527,39 +527,39 @@ class Delta:
         del self._tempo
 
     @property
-    def time_division(self):
-        return self._time_division
+    def division(self):
+        return self._division
 
-    @time_division.setter
-    def time_division(self, value):
-        self._time_division = value
+    @division.setter
+    def division(self, value):
+        self._division = value
         self._update_ticks()
 
-    @time_division.deleter
-    def time_division(self):
-        del self._time_division
+    @division.deleter
+    def division(self):
+        del self._division
 
     def _update_ticks(self):
-        if self._secs != None and self._time_division != None:
-            if self._time_division.mode == 'ppqn':
+        if self._secs != None and self._division != None:
+            if self._division.mode == 'ppqn':
                 if self._tempo != None:
                     self._ticks = int(self._secs * self._tempo.bps *
-                            self._time_division.ppqn)
+                            self._division.ppqn)
             else:
-                self._ticks = int(self._secs * self._time_division.pps)
+                self._ticks = int(self._secs * self._division.pps)
         elif self._secs == 0:
             self._ticks = 0
         elif self._ticks != None and self._secs == None:
             self._update_secs()
 
     def _update_secs(self):
-        if self._ticks != None and self._time_division != None:
-            if self._time_division.mode == 'ppqn':
+        if self._ticks != None and self._division != None:
+            if self._division.mode == 'ppqn':
                 if self._tempo != None:
-                    self._secs = self._ticks / self._time_division.ppqn / \
+                    self._secs = self._ticks / self._division.ppqn / \
                             self._tempo.bps
             else:
-                self._secs = self._ticks / self._time_division.pps
+                self._secs = self._ticks / self._division.pps
         elif self._ticks == 0:
             self._secs = 0
         elif self._secs != None and self._ticks == None:
@@ -594,7 +594,7 @@ class Sequence(list):
             chunk = Chunk.parse(source)
             if chunk.id == 'MTrk':
                 track = Track.parse(chunk)
-                track.time_division = sequence.header.time_division
+                track.division = sequence.header.division
                 sequence.append(track)
         return sequence
 
@@ -608,9 +608,9 @@ class Sequence(list):
         return bytes(array)
 
 class Track(list):
-    def __init__(self, events=list(), time_division=None, tempo=None):
+    def __init__(self, events=list(), division=None, tempo=None):
         super().__init__(events)
-        self.time_division = time_division
+        self.division = division
         self.tempo = tempo
 
     @staticmethod
@@ -658,18 +658,18 @@ class Track(list):
         return track
 
     @property
-    def time_division(self):
-        return self._time_division
+    def division(self):
+        return self._division
 
-    @time_division.setter
-    def time_division(self, value):
-        self._time_division = value
+    @division.setter
+    def division(self, value):
+        self._division = value
         for event in self:
-            event.delta.time_division = self._time_division
+            event.delta.division = self._division
 
-    @time_division.deleter
-    def time_division(self):
-        del self._time_division
+    @division.deleter
+    def division(self):
+        del self._division
 
     @property
     def tempo(self):
@@ -695,10 +695,10 @@ class Track(list):
         return bytes(array)
 
 class Header:
-    def __init__(self, format=None, tracks=None, time_division=None):
+    def __init__(self, format=None, tracks=None, division=None):
         self.format = format
         self.tracks = tracks
-        self.time_division = time_division
+        self.division = division
 
     @staticmethod
     def parse(source):
@@ -710,14 +710,14 @@ class Header:
             array.append(next(source))
         header.format = int.from_bytes(array[0:2], 'big')
         header.tracks = int.from_bytes(array[2:4], 'big')
-        header.time_division = TimeDivision(array[4:6])
+        header.division = TimeDivision(array[4:6])
         return header
 
     def __bytes__(self):
         array = bytearray()
         array.extend(self.format.to_bytes(2, 'big'))
         array.extend(self.tracks.to_bytes(2, 'big'))
-        array.extend(bytes(self.time_division))
+        array.extend(bytes(self.division))
         return bytes(array)
 
 class Chunk(bytearray):
