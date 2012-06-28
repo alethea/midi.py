@@ -180,8 +180,8 @@ class MetaEvent(Event):
                     0x2f: EndTrack,
                     0x51: SetTempo,
                     0x54: SMPTEOffset,
-                    0x58: TimeSignature,
-                    0x59: KeySignature,
+                    0x58: SetTimeSignature,
+                    0x59: SetKeySignature,
                     0x7f: ProprietaryEvent }
 
             return events[type]._parse(source)
@@ -213,8 +213,8 @@ class MetaEvent(Event):
                 EndTrack: 0x2f,
                 SetTempo: 0x51,
                 SMPTEOffset: 0x54,
-                TimeSignature: 0x58,
-                KeySignature: 0x59,
+                SetTimeSignature: 0x58,
+                SetKeySignature: 0x59,
                 ProprietaryEvent: 0x7f }
 
         array.extend(bytes(self.delta))
@@ -327,7 +327,7 @@ class SMPTEOffset(MetaEvent):
     def _bytes(self):
         return self.data
 
-class TimeSignature(MetaEvent):
+class SetTimeSignature(MetaEvent):
     def __init__(self, source=None, **keywords):
         super().__init__(**keywords)
         self.data = source
@@ -335,13 +335,23 @@ class TimeSignature(MetaEvent):
     def _bytes(self):
         return self.data
 
-class KeySignature(MetaEvent):
+class SetKeySignature(MetaEvent):
     def __init__(self, source=None, **keywords):
         super().__init__(**keywords)
-        self.data = source
+        if source != None:
+            self.key = int.from_bytes(bytes(source[0]), 'big', signed=True)
+            self.scale = int.from_bytes(bytes(source[1]), 'big')
+        else:
+            self.key = keywords.get('key', None)
+            self.scale = keywords.get('scale', None)
+
+    def __repr__(self):
+        return '{name}(key={key}, scale={scale})'.format(
+                name=type(self).__name__, key=self.key, scale=self.scale)
 
     def _bytes(self):
-        return self.data
+        return self.key.to_bytes(1, 'big', signed=True) + \
+                self.scale.to_bytes(1, 'big')
 
 class ProprietaryEvent(MetaEvent):
     def __init__(self, source=None, **keywords):
@@ -638,7 +648,7 @@ class Track(list):
 
     def duration(self, event):
         time = 0
-        if len(self) = 0:
+        if len(self) == 0:
             return 0
         if isinstance(event, numbers.Number):
             if event < 0:
