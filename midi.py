@@ -336,17 +336,19 @@ class SetTimeSignature(MetaEvent):
         return self.data
 
 class SetKeySignature(MetaEvent):
-    def __init__(self, source=None, **keywords):
+    def __init__(self, key=None, scale=None, **keywords):
         super().__init__(**keywords)
-        if source != None:
-            self.key = int.from_bytes(bytes(source[0]), 'big', signed=True)
-            self.scale = int.from_bytes(bytes(source[1]), 'big')
+        if isinstance(key, collections.Iterable):
+            self.key = key[0]
+            self.scale = key[1]
         else:
-            self.key = keywords.get('key', None)
-            self.scale = keywords.get('scale', None)
+            self.key = key
+            self.scale = scale
+        if self.key > 0x7f:
+            self.key = -((self.key ^ 0xff) + 1)
 
     def __repr__(self):
-        return '{name}(key={key}, scale={scale})'.format(
+        return '{name}({key}, {scale})'.format(
                 name=type(self).__name__, key=self.key, scale=self.scale)
 
     def _bytes(self):
