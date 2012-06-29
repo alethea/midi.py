@@ -731,35 +731,11 @@ class Track(list):
         array.extend(bytes(end_track))
         return bytes(array)
 
-class Header:
-    def __init__(self, format=None, tracks=None, division=None):
-        self.format = format
-        self.tracks = tracks
-        self.division = division
-
-    @staticmethod
-    def parse(source):
-        header = Header()
-        if not isinstance(source, collections.Iterator):
-            source = iter(source)
-        array = bytearray()
-        for i in range(6):
-            array.append(next(source))
-        header.format = int.from_bytes(array[0:2], 'big')
-        header.tracks = int.from_bytes(array[2:4], 'big')
-        header.division = TimeDivision(array[4:6])
-        return header
-
-    def __bytes__(self):
-        array = bytearray()
-        array.extend(self.format.to_bytes(2, 'big'))
-        array.extend(self.tracks.to_bytes(2, 'big'))
-        array.extend(bytes(self.division))
-        return bytes(array)
-
-class Sequence(list, Header):
-    def __init__(self, tracks=list()):
+class Sequence(list):
+    def __init__(self, tracks=list(), format=None, division=None):
         super().__init__(tracks)
+        self.format = format
+        self.division = division
 
     @staticmethod
     def parse(source):
@@ -767,13 +743,14 @@ class Sequence(list, Header):
         if not isinstance(source, collections.Iterator):
             source = iter(source)
         chunk = Chunk.parse(source, id='MThd')
-        header = Header.parse(chunk)
-        for i in range(header.tracks):
+        sequence.format = int.from_bytes(chunk[0:2], 'big')
+        tracks = int.from_bytes(chunk[2:4], 'big')
+        division = TimeDivision(chunk[4:6])
+        for i in range(tracks):
             chunk = Chunk.parse(source)
             if chunk.id == 'MTrk':
                 sequence.append(Track.parse(chunk))
-        sequence.format = header.format
-        sequence.division = header.division
+        sequence.division = division
         return sequence
     
     @property
@@ -796,7 +773,11 @@ class Sequence(list, Header):
 
     def __bytes__(self):
         array = bytearray()
-        chunk = Chunk('MThd', Header.__bytes__(self))
+        header = bytearray()
+        header.extend(self.format.to_bytes(2, 'big'))
+        header.extend(self.tracks.to_bytes(2, 'big'))
+        header.extend(bytes(self.division))
+        chunk = Chunk('MThd', header)
         array.extend(bytes(chunk))
         for track in self:
             chunk = Chunk('MTrk', bytes(track))
