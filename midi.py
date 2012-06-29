@@ -7,380 +7,6 @@ import numbers
 import copy
 import math
 
-class Event:
-    def __init__(self, **keywords):
-        delta = keywords.get('delta', None)
-        division = keywords.get('division', None)
-        tempo = keywords.get('tempo', None)
-        if isinstance(delta, Delta):
-            self.delta = delta
-        else:
-            self.delta = Delta(delta, division, tempo)
-
-    @staticmethod
-    def parse(source):
-        if not isinstance(source, collections.Iterator):
-            source = iter(source)
-        ticks = _var_int_parse(source)
-        status = next(source)
-        if status == 0xff:
-            event = MetaEvent._parse(source)
-        elif status == 0xf7 or status == 0xf0:
-            event = SysExEvent._parse(source, status)
-        else:
-            event = ChannelEvent._parse(source, status)
-        event.delta.ticks = ticks
-        return event
-
-    def __str__(self):
-        return repr(self)
-
-class ChannelEvent(Event):
-    def __init__(self, **keywords):
-        super().__init__(**keywords)
-        self.channel = keywords.get('channel', None)
-    
-    @classmethod
-    def _parse(cls, source=None, status=None):
-        if cls == ChannelEvent:
-            channel = status & 0x0f
-            type = status & 0xf0
-            events = {
-                    0x80: NoteOff,
-                    0x90: NoteOn,
-                    0xa0: NoteAftertouch,
-                    0xb0: Controller,
-                    0xc0: ProgramChange,
-                    0xd0: ChannelAftertouch,
-                    0xe0: PitchBend }
-            if type not in events:
-                raise MIDIError(
-                        'Encountered an unkown event: {status:X}.'.format(
-                        status=status))
-            event = events[type]._parse(source)
-            event.channel = channel
-            return event
-        else:
-            return cls(next(source), next(source))
-
-    def __str__(self):
-        return type(self).__name__
-
-    def __repr__(self):
-        parameters = self._parameters()
-        if len(parameters) == 1:
-            return '{name}({value})'.format(
-                    name=type(self).__name__, value=parameters[0])
-        else:
-            return '{name}{parameters}'.format(
-                    name=type(self).__name__, parameters=tuple(parameters))
-
-    def __bytes__(self):
-        array = bytearray()
-        
-        statuses = {
-                NoteOff: 0x80,
-                NoteOn: 0x90,
-                NoteAftertouch: 0xa0,
-                Controller: 0xb0,
-                ProgramChange: 0xc0,
-                ChannelAftertouch: 0xd0,
-                PitchBend: 0xe0 }
-
-        array.extend(bytes(self.delta))
-        array.append(statuses[type(self)] | self.channel)
-        array.extend(self._parameters())
-        return bytes(array)
-
-class NoteOff(ChannelEvent):
-    def __init__(self, note=None, velocity=None, **keywords):
-        super().__init__(**keywords)
-        self.note = note
-        self.velocity = velocity
-
-    def _parameters(self):
-        return (self.note, self.velocity)
-
-class NoteOn(ChannelEvent):
-    def __init__(self, note=None, velocity=None, **keywords):
-        super().__init__(**keywords)
-        self.note = note
-        self.velocity = velocity
-
-    def _parameters(self):
-        return (self.note, self.velocity)
-
-class NoteAftertouch(ChannelEvent):
-    def __init__(self, note=None, value=None, **keywords):
-        super().__init__(**keywords)
-        self.note = note
-        self.value = value
-
-    def _parameters(self):
-        return (self.note, self.value)
-
-class Controller(ChannelEvent):
-    def __init__(self, type=None, value=None, **keywords):
-        super().__init__(**keywords)
-        self.type = type
-        self.value = value
-
-    def _parameters(self):
-        return (self.type, self.value)
-    
-class ProgramChange(ChannelEvent):
-    def __init__(self, program=None, **keywords):
-        super().__init__(**keywords)
-        self.program = program
-
-    @classmethod
-    def _parse(cls, source):
-        return cls(next(source))
-
-    def _parameters(self):
-        return (self.program,)
-
-class ChannelAftertouch(ChannelEvent):
-    def __init__(self, amount=None, **keywords):
-        super().__init__(**keywords)
-        self.amount = amount
-
-    @classmethod
-    def _parse(cls, source):
-        return cls(next(source))
-
-    def _parameters(self):
-        return (self.amount,)
-
-class PitchBend(ChannelEvent):
-    def __init__(self, value=None, **keywords):
-        super().__init__(**keywords)
-        self.value = value
-
-    @classmethod
-    def _parse(cls, source):
-        value = (next(source) & 0x7f) | ((next(source) & 0x7f) << 7)
-        return cls(value)
-
-    def _parameters(self):
-        return(self.value & 0x7f, (self.value >> 7) & 0x7f )
-
-class MetaEvent(Event):
-
-    @classmethod
-    def _parse(cls, source):
-        if cls == MetaEvent:
-            type = next(source)
-
-            events = {
-                    0x00: SequenceNumber,
-                    0x01: Text,
-                    0x02: Copyright,
-                    0x03: Name,
-                    0x04: Instrument,
-                    0x05: Lyrics,
-                    0x06: Marker,
-                    0x07: CuePoint,
-                    0x20: ChannelPrefix,
-                    0x2f: EndTrack,
-                    0x51: SetTempo,
-                    0x54: SMPTEOffset,
-                    0x58: SetTimeSignature,
-                    0x59: SetKeySignature,
-                    0x7f: ProprietaryEvent }
-
-            return events[type]._parse(source)
-        else:
-            length = _var_int_parse(source)
-            data = bytearray()
-            for i in range(length):
-                data.append(next(source))
-            return cls(data)
-
-    def __str__(self):
-        return type(self).__name__
-
-    def __repr__(self):
-        return '{name}({data!r})'.format(
-                name=type(self).__name__, data=self._bytes())
-
-    def __bytes__(self):
-        array = bytearray()
-        data = self._bytes()
-
-        types = {
-                SequenceNumber: 0x00,
-                Text: 0x01,
-                Copyright: 0x02,
-                Name: 0x03,
-                Instrument: 0x04,
-                Lyrics: 0x05,
-                Marker: 0x06,
-                CuePoint: 0x07,
-                ChannelPrefix: 0x20,
-                EndTrack: 0x2f,
-                SetTempo: 0x51,
-                SMPTEOffset: 0x54,
-                SetTimeSignature: 0x58,
-                SetKeySignature: 0x59,
-                ProprietaryEvent: 0x7f }
-
-        array.extend(bytes(self.delta))
-        array.append(0xff)
-        array.append(types[type(self)])
-        array.extend(_var_int_bytes(len(data)))
-        array.extend(data)
-        return bytes(array)
-
-class TextMetaEvent(MetaEvent):
-    def __init__(self, source=None, **keywords):
-        super().__init__(**keywords)
-        try:
-            self.text = str(source, 'ascii')
-        except TypeError:
-            self.text = source
-
-    def __repr__(self):
-        return '{name}({text!r})'.format(
-                name=type(self).__name__, text=self.text)
-
-    def _bytes(self):
-        return self.text.encode('ascii')
-
-class SequenceNumber(MetaEvent):
-    def __init__(self, source=None, **keywords):
-        super().__init__(**keywords)
-        try:
-            self.number = int.from_bytes(source, 'big')
-        except TypeError:
-            self.number = source
-
-    def __repr__(self):
-        return '{name}({number})'.format(
-                name=type(self).__name__, number=self.number)
-
-    def _bytes(self):
-        return self.number.to_bytes(2, 'big')
-
-class Text(TextMetaEvent):
-    pass
-
-class Copyright(TextMetaEvent):
-    pass
-
-class Name(TextMetaEvent):
-    pass
-
-class Instrument(TextMetaEvent):
-    pass
-
-class Lyrics(TextMetaEvent):
-    pass
-
-class Marker(TextMetaEvent):
-    pass
-
-class CuePoint(TextMetaEvent):
-    pass
-
-class ChannelPrefix(MetaEvent):
-    def __init__(self, source=None, **keywords):
-        super().__init__(**keywords)
-        try:
-            self.channel = int.from_bytes(source, 'big')
-        except TypeError:
-            self.channel = source
-
-    def __repr__(self):
-        return '{name}({channel})'.format(
-                name=type(self).__name__, channel=self.channel)
-
-    def _bytes(self):
-        return self.channel.to_bytes(1, 'big')
-
-class EndTrack(MetaEvent):
-    def __init__(self, source=None, **keywords):
-        super().__init__(**keywords)
-
-    def __repr__(self):
-        return '{name}()'.format(name=type(self).__name__)
-
-    def _bytes(self):
-        return bytes()
-
-class SetTempo(MetaEvent):
-    def __init__(self, source=None, **keywords):
-        super().__init__(**keywords)
-        try:
-            mpqn = int.from_bytes(source, 'big')
-        except TypeError:
-            mpqn = source
-        if isinstance(mpqn, numbers.Number):
-            self.tempo = Tempo(mpqn=mpqn)
-        else:
-            self.tempo = source
-
-    def __repr__(self):
-        return '{name}({tempo!r})'.format(
-                name=type(self).__name__, tempo=self.tempo)
-
-    def _bytes(self):
-        return self.tempo.mpqn.to_bytes(3, 'big')
-
-class SMPTEOffset(MetaEvent):
-    def __init__(self, source=None, **keywords):
-        super().__init__(**keywords)
-        self.data = source
-
-    def _bytes(self):
-        return self.data
-
-class SetTimeSignature(MetaEvent):
-    def __init__(self, source=None, **keywords):
-        super().__init__(**keywords)
-        if isinstance(source, TimeSignature):
-            self.signature = source
-        else:
-            self.signature = TimeSignature(source, **keywords)
-
-    def __repr__(self):
-        return '{name}({signature!r})'.format(
-                name=type(self).__name__, signature=self.signature)
-
-    def _bytes(self):
-        return bytes(self.signature)
-
-class SetKeySignature(MetaEvent):
-    def __init__(self, key=None, scale=None, **keywords):
-        super().__init__(**keywords)
-        if isinstance(key, collections.Iterable):
-            self.key = key[0]
-            self.scale = key[1]
-        else:
-            self.key = key
-            self.scale = scale
-        if self.key > 0x7f:
-            self.key = -((self.key ^ 0xff) + 1)
-
-    def __repr__(self):
-        return '{name}({key}, {scale})'.format(
-                name=type(self).__name__, key=self.key, scale=self.scale)
-
-    def _bytes(self):
-        return (self.key.to_bytes(1, 'big', signed=True) +
-                self.scale.to_bytes(1, 'big'))
-
-class ProprietaryEvent(MetaEvent):
-    def __init__(self, source=None, **keywords):
-        super().__init__(**keywords)
-        self.data = source
-
-    def _bytes(self):
-        return self.data
-
-class SysExEvent(Event):
-    pass
-
 class Tempo:
     def __init__(self, source=None, **keywords):
         if source == None:
@@ -652,6 +278,368 @@ class Delta:
         else:
             return _var_int_bytes(ticks)
 
+class Event(Delta):
+    def __init__(self, **keywords):
+        super().__init__(**keywords)
+
+    @staticmethod
+    def parse(source):
+        if not isinstance(source, collections.Iterator):
+            source = iter(source)
+        ticks = _var_int_parse(source)
+        status = next(source)
+        if status == 0xff:
+            event = MetaEvent._parse(source)
+        elif status == 0xf7 or status == 0xf0:
+            event = SysExEvent._parse(source, status)
+        else:
+            event = ChannelEvent._parse(source, status)
+        event.ticks = ticks
+        return event
+
+    def __str__(self):
+        return type(self.__name__)
+
+class ChannelEvent(Event):
+    def __init__(self, **keywords):
+        super().__init__(**keywords)
+        self.channel = keywords.get('channel', None)
+    
+    @classmethod
+    def _parse(cls, source=None, status=None):
+        if cls == ChannelEvent:
+            channel = status & 0x0f
+            type = status & 0xf0
+            events = {
+                    0x80: NoteOff,
+                    0x90: NoteOn,
+                    0xa0: NoteAftertouch,
+                    0xb0: Controller,
+                    0xc0: ProgramChange,
+                    0xd0: ChannelAftertouch,
+                    0xe0: PitchBend }
+            if type not in events:
+                raise MIDIError(
+                        'Encountered an unkown event: {status:X}.'.format(
+                        status=status))
+            event = events[type]._parse(source)
+            event.channel = channel
+            return event
+        else:
+            return cls(next(source), next(source))
+
+    def __repr__(self):
+        parameters = self._parameters()
+        if len(parameters) == 1:
+            return '{name}({value})'.format(
+                    name=type(self).__name__, value=parameters[0])
+        else:
+            return '{name}{parameters}'.format(
+                    name=type(self).__name__, parameters=tuple(parameters))
+
+    def __bytes__(self):
+        array = bytearray()
+        
+        statuses = {
+                NoteOff: 0x80,
+                NoteOn: 0x90,
+                NoteAftertouch: 0xa0,
+                Controller: 0xb0,
+                ProgramChange: 0xc0,
+                ChannelAftertouch: 0xd0,
+                PitchBend: 0xe0 }
+
+        array.extend(Delta.__bytes__(self))
+        array.append(statuses[type(self)] | self.channel)
+        array.extend(self._parameters())
+        return bytes(array)
+
+class NoteOff(ChannelEvent):
+    def __init__(self, note=None, velocity=None, **keywords):
+        super().__init__(**keywords)
+        self.note = note
+        self.velocity = velocity
+
+    def _parameters(self):
+        return (self.note, self.velocity)
+
+class NoteOn(ChannelEvent):
+    def __init__(self, note=None, velocity=None, **keywords):
+        super().__init__(**keywords)
+        self.note = note
+        self.velocity = velocity
+
+    def _parameters(self):
+        return (self.note, self.velocity)
+
+class NoteAftertouch(ChannelEvent):
+    def __init__(self, note=None, value=None, **keywords):
+        super().__init__(**keywords)
+        self.note = note
+        self.value = value
+
+    def _parameters(self):
+        return (self.note, self.value)
+
+class Controller(ChannelEvent):
+    def __init__(self, type=None, value=None, **keywords):
+        super().__init__(**keywords)
+        self.type = type
+        self.value = value
+
+    def _parameters(self):
+        return (self.type, self.value)
+    
+class ProgramChange(ChannelEvent):
+    def __init__(self, program=None, **keywords):
+        super().__init__(**keywords)
+        self.program = program
+
+    @classmethod
+    def _parse(cls, source):
+        return cls(next(source))
+
+    def _parameters(self):
+        return (self.program,)
+
+class ChannelAftertouch(ChannelEvent):
+    def __init__(self, amount=None, **keywords):
+        super().__init__(**keywords)
+        self.amount = amount
+
+    @classmethod
+    def _parse(cls, source):
+        return cls(next(source))
+
+    def _parameters(self):
+        return (self.amount,)
+
+class PitchBend(ChannelEvent):
+    def __init__(self, value=None, **keywords):
+        super().__init__(**keywords)
+        self.value = value
+
+    @classmethod
+    def _parse(cls, source):
+        value = (next(source) & 0x7f) | ((next(source) & 0x7f) << 7)
+        return cls(value)
+
+    def _parameters(self):
+        return(self.value & 0x7f, (self.value >> 7) & 0x7f )
+
+class MetaEvent(Event):
+
+    @classmethod
+    def _parse(cls, source):
+        if cls == MetaEvent:
+            type = next(source)
+
+            events = {
+                    0x00: SequenceNumber,
+                    0x01: Text,
+                    0x02: Copyright,
+                    0x03: Name,
+                    0x04: Instrument,
+                    0x05: Lyrics,
+                    0x06: Marker,
+                    0x07: CuePoint,
+                    0x20: ChannelPrefix,
+                    0x2f: EndTrack,
+                    0x51: SetTempo,
+                    0x54: SMPTEOffset,
+                    0x58: SetTimeSignature,
+                    0x59: SetKeySignature,
+                    0x7f: ProprietaryEvent }
+
+            return events[type]._parse(source)
+        else:
+            length = _var_int_parse(source)
+            data = bytearray()
+            for i in range(length):
+                data.append(next(source))
+            return cls(data)
+
+    def __repr__(self):
+        return '{name}({data!r})'.format(
+                name=type(self).__name__, data=self._bytes())
+
+    def __bytes__(self):
+        array = bytearray()
+        data = self._bytes()
+
+        types = {
+                SequenceNumber: 0x00,
+                Text: 0x01,
+                Copyright: 0x02,
+                Name: 0x03,
+                Instrument: 0x04,
+                Lyrics: 0x05,
+                Marker: 0x06,
+                CuePoint: 0x07,
+                ChannelPrefix: 0x20,
+                EndTrack: 0x2f,
+                SetTempo: 0x51,
+                SMPTEOffset: 0x54,
+                SetTimeSignature: 0x58,
+                SetKeySignature: 0x59,
+                ProprietaryEvent: 0x7f }
+
+        array.extend(Delta.__bytes__(self))
+        array.append(0xff)
+        array.append(types[type(self)])
+        array.extend(_var_int_bytes(len(data)))
+        array.extend(data)
+        return bytes(array)
+
+class TextMetaEvent(MetaEvent):
+    def __init__(self, source=None, **keywords):
+        super().__init__(**keywords)
+        try:
+            self.text = str(source, 'ascii')
+        except TypeError:
+            self.text = source
+
+    def __repr__(self):
+        return '{name}({text!r})'.format(
+                name=type(self).__name__, text=self.text)
+
+    def _bytes(self):
+        return self.text.encode('ascii')
+
+class SequenceNumber(MetaEvent):
+    def __init__(self, source=None, **keywords):
+        super().__init__(**keywords)
+        try:
+            self.number = int.from_bytes(source, 'big')
+        except TypeError:
+            self.number = source
+
+    def __repr__(self):
+        return '{name}({number})'.format(
+                name=type(self).__name__, number=self.number)
+
+    def _bytes(self):
+        return self.number.to_bytes(2, 'big')
+
+class Text(TextMetaEvent):
+    pass
+
+class Copyright(TextMetaEvent):
+    pass
+
+class Name(TextMetaEvent):
+    pass
+
+class Instrument(TextMetaEvent):
+    pass
+
+class Lyrics(TextMetaEvent):
+    pass
+
+class Marker(TextMetaEvent):
+    pass
+
+class CuePoint(TextMetaEvent):
+    pass
+
+class ChannelPrefix(MetaEvent):
+    def __init__(self, source=None, **keywords):
+        super().__init__(**keywords)
+        try:
+            self.channel = int.from_bytes(source, 'big')
+        except TypeError:
+            self.channel = source
+
+    def __repr__(self):
+        return '{name}({channel})'.format(
+                name=type(self).__name__, channel=self.channel)
+
+    def _bytes(self):
+        return self.channel.to_bytes(1, 'big')
+
+class EndTrack(MetaEvent):
+    def __init__(self, source=None, **keywords):
+        super().__init__(**keywords)
+
+    def __repr__(self):
+        return '{name}()'.format(name=type(self).__name__)
+
+    def _bytes(self):
+        return bytes()
+
+class SetTempo(MetaEvent):
+    def __init__(self, source=None, **keywords):
+        super().__init__(**keywords)
+        try:
+            mpqn = int.from_bytes(source, 'big')
+        except TypeError:
+            mpqn = source
+        if isinstance(mpqn, numbers.Number):
+            self.tempo = Tempo(mpqn=mpqn)
+        else:
+            self.tempo = source
+
+    def __repr__(self):
+        return '{name}({tempo!r})'.format(
+                name=type(self).__name__, tempo=self.tempo)
+
+    def _bytes(self):
+        return self.tempo.mpqn.to_bytes(3, 'big')
+
+class SMPTEOffset(MetaEvent):
+    def __init__(self, source=None, **keywords):
+        super().__init__(**keywords)
+        self.data = source
+
+    def _bytes(self):
+        return self.data
+
+class SetTimeSignature(MetaEvent):
+    def __init__(self, source=None, **keywords):
+        super().__init__(**keywords)
+        if isinstance(source, TimeSignature):
+            self.signature = source
+        else:
+            self.signature = TimeSignature(source, **keywords)
+
+    def __repr__(self):
+        return '{name}({signature!r})'.format(
+                name=type(self).__name__, signature=self.signature)
+
+    def _bytes(self):
+        return bytes(self.signature)
+
+class SetKeySignature(MetaEvent):
+    def __init__(self, key=None, scale=None, **keywords):
+        super().__init__(**keywords)
+        if isinstance(key, collections.Iterable):
+            self.key = key[0]
+            self.scale = key[1]
+        else:
+            self.key = key
+            self.scale = scale
+        if self.key > 0x7f:
+            self.key = -((self.key ^ 0xff) + 1)
+
+    def __repr__(self):
+        return '{name}({key}, {scale})'.format(
+                name=type(self).__name__, key=self.key, scale=self.scale)
+
+    def _bytes(self):
+        return (self.key.to_bytes(1, 'big', signed=True) +
+                self.scale.to_bytes(1, 'big'))
+
+class ProprietaryEvent(MetaEvent):
+    def __init__(self, source=None, **keywords):
+        super().__init__(**keywords)
+        self.data = source
+
+    def _bytes(self):
+        return self.data
+
+class SysExEvent(Event):
+    pass
+
 class Sequence(list):
     def __init__(self, tracks=list(), header=None):
         super().__init__(tracks)
@@ -707,10 +695,10 @@ class Track(list):
             if event < 0:
                 event = len(self) + event
             for i in range(event + 1):
-                time = time + self[i].delta.ticks
+                time = time + self[i].ticks
         else:
             for item in self:
-                time = time + item.delta.ticks
+                time = time + item.ticks
                 if item is event:
                     break
             else:
@@ -728,7 +716,7 @@ class Track(list):
         track = Track()
         time = 0
         for event in self:
-            time = time + event.delta.ticks
+            time = time + event.ticks
             if time >= end:
                 break
             if time >= start:
@@ -743,7 +731,7 @@ class Track(list):
     def division(self, value):
         self._division = value
         for event in self:
-            event.delta.division = self._division
+            event.division = self._division
 
     @division.deleter
     def division(self):
@@ -757,7 +745,7 @@ class Track(list):
     def tempo(self, value):
         self._tempo = value
         for event in self:
-            event.delta.tempo = self._tempo
+            event.tempo = self._tempo
 
     @tempo.deleter
     def tempo(self):
@@ -768,7 +756,7 @@ class Track(list):
         for item in self:
             array.extend(bytes(item))
         end_track = EndTrack()
-        end_track.delta.ticks = 0
+        end_track.ticks = 0
         array.extend(bytes(end_track))
         return bytes(array)
 
