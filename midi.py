@@ -640,35 +640,6 @@ class ProprietaryEvent(MetaEvent):
 class SysExEvent(Event):
     pass
 
-class Sequence(list):
-    def __init__(self, tracks=list(), header=None):
-        super().__init__(tracks)
-        self.header=header
-
-    @staticmethod
-    def parse(source):
-        sequence = Sequence()
-        if not isinstance(source, collections.Iterator):
-            source = iter(source)
-        chunk = Chunk.parse(source, id='MThd')
-        sequence.header = Header.parse(chunk)
-        for i in range(sequence.header.tracks):
-            chunk = Chunk.parse(source)
-            if chunk.id == 'MTrk':
-                track = Track.parse(chunk)
-                track.division = sequence.header.division
-                sequence.append(track)
-        return sequence
-
-    def __bytes__(self):
-        array = bytearray()
-        chunk = Chunk('MThd', bytes(self.header))
-        array.extend(bytes(chunk))
-        for track in self:
-            chunk = Chunk('MTrk', bytes(track))
-            array.extend(bytes(chunk))
-        return bytes(array)
-
 class Track(list):
     def __init__(self, events=list(), division=None, tempo=None):
         super().__init__(events)
@@ -784,6 +755,52 @@ class Header:
         array.extend(self.format.to_bytes(2, 'big'))
         array.extend(self.tracks.to_bytes(2, 'big'))
         array.extend(bytes(self.division))
+        return bytes(array)
+
+class Sequence(list, Header):
+    def __init__(self, tracks=list()):
+        super().__init__(tracks)
+
+    @staticmethod
+    def parse(source):
+        sequence = Sequence()
+        if not isinstance(source, collections.Iterator):
+            source = iter(source)
+        chunk = Chunk.parse(source, id='MThd')
+        header = Header.parse(chunk)
+        for i in range(header.tracks):
+            chunk = Chunk.parse(source)
+            if chunk.id == 'MTrk':
+                sequence.append(Track.parse(chunk))
+        sequence.format = header.format
+        sequence.division = header.division
+        return sequence
+    
+    @property
+    def division(self):
+        return self._division
+
+    @division.setter
+    def division(self, value):
+        self._division = value
+        for track in self:
+            track.division = self._division
+
+    @division.deleter
+    def division(self):
+        del self._division
+
+    @property
+    def tracks(self):
+        return len(self)
+
+    def __bytes__(self):
+        array = bytearray()
+        chunk = Chunk('MThd', Header.__bytes__(self))
+        array.extend(bytes(chunk))
+        for track in self:
+            chunk = Chunk('MTrk', bytes(track))
+            array.extend(bytes(chunk))
         return bytes(array)
 
 class Chunk(bytearray):
