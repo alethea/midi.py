@@ -5,6 +5,7 @@ import binascii
 import collections
 import numbers
 import copy
+import math
 
 class Event:
     def __init__(self, **keywords):
@@ -60,6 +61,9 @@ class ChannelEvent(Event):
             return event
         else:
             return cls(next(source), next(source))
+
+    def __str__(self):
+        return type(self).__name__
 
     def __repr__(self):
         parameters = self._parameters()
@@ -191,6 +195,9 @@ class MetaEvent(Event):
             for i in range(length):
                 data.append(next(source))
             return cls(data)
+
+    def __str__(self):
+        return type(self).__name__
 
     def __repr__(self):
         return '{name}({data!r})'.format(
@@ -330,10 +337,17 @@ class SMPTEOffset(MetaEvent):
 class SetTimeSignature(MetaEvent):
     def __init__(self, source=None, **keywords):
         super().__init__(**keywords)
-        self.data = source
+        if isinstance(source, TimeSignature):
+            self.signature = source
+        else:
+            self.signature = TimeSignature(source, **keywords)
+
+    def __repr__(self):
+        return '{name}({signature!r})'.format(
+                name=type(self).__name__, signature=self.signature)
 
     def _bytes(self):
-        return self.data
+        return bytes(self.signature)
 
 class SetKeySignature(MetaEvent):
     def __init__(self, key=None, scale=None, **keywords):
@@ -477,8 +491,8 @@ class TimeDivision:
         if self.mode == 'ppqn':
             return 'TimeDivision({ppqn})'.format(ppqn=self.ppqn)
         else:
-            return 'TimeDivision(frames={frames}, subframes={subframes})'\
-                    .format(frames=self.frames, subframes=self.subframes)
+            return ('TimeDivision(frames={frames}, subframes={subframes})'
+                    .format(frames=self.frames, subframes=self.subframes))
 
     def __bytes__(self):
         if self.mode == 'ppqn':
@@ -487,13 +501,50 @@ class TimeDivision:
             value = 0x8000 | (self._frames << 8) | self._subframes
             return value.to_bytes(2, 'big')
 
+class TimeSignature:
+    def __init__(self, numerator=4, denominator=4, metronome=24,
+            quarter=8):
+        if isinstance(numerator, collections.Iterable):
+            source = numerator
+            self.numerator = source[0]
+            self.denominator = int(2 ** source[1])
+            self.metronome = source[2]
+            self.quarter = source[3]
+        else:
+            if numerator == None:
+                self.numerator = 4
+            else:
+                self.numerator = numerator
+            self.denominator = denominator
+            self.metronome = metronome
+            self.quarter = quarter
+
+    def __str__(self):
+        return '{numerator}/{denominator}'.format(
+                numerator=self.numerator, denominator=self.denominator)
+
+    def __repr__(self):
+        return ('TimeSignature({num}, {denom}, {metro}, {quarter})'
+                .format(num=self.numerator, denom=self.denominator,
+                        metro=self.metronome, quarter=self.quarter))
+
+    def __bytes__(self):
+        array = bytearray()
+        array.append(self.numerator)
+        array.append(int(math.log(self.denominator, 2)))
+        array.append(self.metronome)
+        array.append(self.quarter)
+        return bytes(array)
+
 class Delta:
-    def __init__(self, source=None, division=None, tempo=None):
+    def __init__(self, source=None, division=None, tempo=None, 
+            signature=None):
         self._division = division
         self._old_division = division
         self._tempo = tempo
         self._old_tempo = tempo
         self._ticks = None
+        self.signature = signature
         if source == None:
             self.ticks = None
         elif isinstance(source, numbers.Number):
