@@ -173,9 +173,13 @@ class Delta:
         self._ticks = None
         self.signature = signature
         if source == None:
-            self.ticks = None
+            self.ticks = 0
         elif isinstance(source, numbers.Number):
             self.ticks = source
+        elif isinstance(source, type(self)):
+            self._division = source.division
+            self._tempo = source.tempo
+            self.ticks = source.ticks
         else:
             self.ticks = _var_int_parse(source)
 
@@ -264,6 +268,28 @@ class Delta:
             if self._old_tempo != None and self._division.mode == 'pps':
                 self._ticks *= self._tempo.bpm / self._old_tempo.bpm
             self._old_tempo = copy.deepcopy(self._tempo)
+    
+    def __add__(self, other):
+        try:
+            delta = Delta(other)
+        except AttributeError:
+            return NotImplemented
+        else:
+            delta.division = self.division
+            delta.tempo = self.tempo
+            delta.ticks += self.ticks
+            return delta
+
+    def __sub__(self, other):
+        try:
+            delta = Delta(other)
+        except AttributeError:
+            return NotImplemented
+        else:
+            delta.division = self.division
+            delta.tempo = self.tempo
+            delta.ticks = self.ticks - delta.ticks
+            return delta
 
     def __str__(self):
         return str(self.ticks)
