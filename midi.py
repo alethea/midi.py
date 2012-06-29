@@ -54,8 +54,9 @@ class ChannelEvent(Event):
                     0xd0: ChannelAftertouch,
                     0xe0: PitchBend }
             if type not in events:
-                raise MIDIError('Encountered an unkown event: {status:X}.'\
-                        .format(status=status))
+                raise MIDIError(
+                        'Encountered an unkown event: {status:X}.'.format(
+                        status=status))
             event = events[type]._parse(source)
             event.channel = channel
             return event
@@ -366,8 +367,8 @@ class SetKeySignature(MetaEvent):
                 name=type(self).__name__, key=self.key, scale=self.scale)
 
     def _bytes(self):
-        return self.key.to_bytes(1, 'big', signed=True) + \
-                self.scale.to_bytes(1, 'big')
+        return (self.key.to_bytes(1, 'big', signed=True) +
+                self.scale.to_bytes(1, 'big'))
 
 class ProprietaryEvent(MetaEvent):
     def __init__(self, source=None, **keywords):
@@ -621,22 +622,21 @@ class Delta:
                         ratio = self._division.ppqn / self._old_division.ppqn
                     else:
                         ratio = self._division.pps / self._old_division.pps
-                    self._ticks = self._ticks * ratio
+                    self._ticks *= ratio
                 elif self._tempo != None:
                     if self._division.mode == 'ppqn':
-                        ratio = self._division.ppqn / \
-                                (self._old_division.pps / self._tempo.bps)
+                        ratio = (self._division.ppqn /
+                                (self._old_division.pps / self._tempo.bps))
                     else:
-                        ratio = self._division.pps / \
-                                (self._tempo.bps / self._old_division.ppqn)
-                    self._ticks = self._ticks * ratio
+                        ratio = (self._division.pps /
+                                (self._tempo.bps / self._old_division.ppqn))
+                    self._ticks *= ratio
             self._old_division = copy.deepcopy(self._division)
 
     def _update_tempo(self):
         if self._tempo != None and self._ticks != None:
             if self._old_tempo != None and self._division.mode == 'pps':
-                self._ticks = self._ticks * \
-                        self._tempo.bpm / self._old_tempo.bpm
+                self._ticks *= self._tempo.bpm / self._old_tempo.bpm
             self._old_tempo = copy.deepcopy(self._tempo)
 
     def __str__(self):
@@ -830,8 +830,9 @@ class Chunk(bytearray):
                     raise MIDIError('{id} chunk not found.'.format(id=id))
                 mode = 'len'
         else:
-            raise MIDIError('Incompete {id} chunk. Read {got}/{total} bytes.'\
-                    .format(got=len(chunk), total=length, id=chunk.id))
+            raise MIDIError(
+                    'Incompete {id} chunk. Read {got}/{total} bytes.'.format(
+                    got=len(chunk), total=length, id=chunk.id))
 
         if isinstance(source, io.IOBase):
             source.seek(length + 8 - source.tell(), io.SEEK_CUR)
