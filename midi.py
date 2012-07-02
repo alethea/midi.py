@@ -779,7 +779,7 @@ class Sequence(list):
                 sequence.append(Track.parse(chunk))
         sequence.division = division
         return sequence
-    
+
     @property
     def format(self):
         return self._format
@@ -797,19 +797,19 @@ class Sequence(list):
             mixed = self.pop()
             meta = Track()
             data = Track()
-            mixed_delta = Delta()
-            meta_delta = Delta()
-            data_delta = Delta()
+            mixed_ticks = 0
+            meta_ticks = 0
+            data_ticks = 0
             for event in mixed:
-                mixed_delta += event
+                mixed_ticks += event.ticks
                 if isinstance(event, MetaEvent):
-                    event.ticks = mixed_delta.ticks - meta_delta.ticks
+                    event.ticks = mixed_ticks - meta_ticks
                     meta.append(event)
-                    meta_delta = Delta(mixed_delta)
+                    meta_ticks = mixed_ticks
                 else:
-                    event.ticks = mixed_delta.ticks - data_delta.ticks
+                    event.ticks = mixed_ticks - data_ticks
                     data.append(event)
-                    data_delta = Delta(mixed_delta)
+                    data_ticks = mixed_ticks
             self.append(meta)
             self.append(data)
         else:
