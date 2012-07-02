@@ -760,6 +760,7 @@ class Track(list):
 class Sequence(list):
     def __init__(self, tracks=list(), format=None, division=None):
         super().__init__(tracks)
+        self._format = None
         self.format = format
         self.division = division
 
@@ -780,6 +781,47 @@ class Sequence(list):
         return sequence
     
     @property
+    def format(self):
+        return self._format
+
+    @format.setter
+    def format(self, value):
+        if self._format == None or len(self) == 0:
+            self._format = value
+        elif self._format == 0 and value == 1:
+            if len(self) != 1:
+                raise MIDIError(
+                        'Invalid format 0 sequence, contains {n} tracks.'\
+                        .format(n=len(self)))
+            self._format = value
+            mixed = self.pop()
+            meta = Track()
+            data = Track()
+            mixed_delta = Delta()
+            meta_delta = Delta()
+            data_delta = Delta()
+            for event in mixed:
+                mixed_delta += event
+                if isinstance(event, MetaEvent):
+                    event.ticks = mixed_delta.ticks - meta_delta.ticks
+                    meta.append(event)
+                    meta_delta = Delta(mixed_delta)
+                else:
+                    event.ticks = mixed_delta.ticks - data_delta.ticks
+                    data.append(event)
+                    data_delta = Delta(mixed_delta)
+            self.append(meta)
+            self.append(data)
+        else:
+            raise MIDIError(
+                    'Cannot convert a format {0} sequence to {1}.'.format(
+                    self._format, value))
+
+    @format.deleter
+    def format(self):
+        del self._format
+
+    @property
     def division(self):
         return self._division
 
@@ -793,15 +835,11 @@ class Sequence(list):
     def division(self):
         del self._division
 
-    @property
-    def tracks(self):
-        return len(self)
-
     def __bytes__(self):
         array = bytearray()
         header = bytearray()
         header.extend(self.format.to_bytes(2, 'big'))
-        header.extend(self.tracks.to_bytes(2, 'big'))
+        header.extend(len(self).to_bytes(2, 'big'))
         header.extend(bytes(self.division))
         chunk = Chunk('MThd', header)
         array.extend(bytes(chunk))
