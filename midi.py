@@ -19,7 +19,7 @@ class Tempo:
 
     @property
     def mpqn(self):
-        return int(60000000 // self.bpm)
+        return round(60000000 // self.bpm)
 
     @mpqn.setter
     def mpqn(self, value):
@@ -187,7 +187,7 @@ class Delta:
     def ticks(self):
         self._update_division()
         self._update_tempo()
-        return int(self._ticks)
+        return round(self._ticks)
 
     @ticks.setter
     def ticks(self, value):
@@ -304,6 +304,115 @@ class Delta:
             return bytes(1)
         else:
             return _var_int_bytes(ticks)
+
+class Time(Delta):
+    def __init__(self, source=None, **keywords):
+        signature = keywords.pop('signature', None)
+        super().__init__(**keywords)
+        if source == None:
+            self._bars = keywords.get('bars', 0)
+            self._beats = keywords.get('beats', 0)
+            self._ticks = keywords.get('ticks', 0)
+        elif isinstance(source, collections.Iterable):
+            if isinstance(source, str):
+                source = source.split('|')
+            self._bars = int(source[0])
+            self._beats = int(source[1])
+            self._ticks = int(source[2])
+        elif isinstance(source, Delta):
+            self._divison = source.division
+            self._tempo = source.tempo
+            self._signature = source.signature
+            if isinstance(source, Time):
+                self._bars = source.bars
+                self._beats = source.beats
+            else:
+                self._bars = 0
+                self._beats = 0
+            self._ticks = source.ticks
+        self._signature = signature
+        self._update_signature()
+    
+    @property
+    def bars(self):
+        self._update_signature()
+        return self._bars
+
+    @bars.setter
+    def bars(self, value):
+        self._bars = value
+        self._update_signature()
+
+    @bars.deleter
+    def bars(self):
+        del self._bars
+
+    @property
+    def beats(self):
+        self._update_signature()
+        return self._beats
+
+    @beats.setter
+    def beats(self, value):
+        self._beats = value
+        self._update_signature()
+
+    @beats.deleter
+    def beats(self):
+        del self._beats
+
+    @property
+    def ticks(self):
+        self._update_division()
+        self._update_tempo()
+        self._update_signature()
+        return round(self._ticks)
+
+    @ticks.setter
+    def ticks(self, value):
+        self._ticks = value
+        self._update_signature()
+
+    @ticks.deleter
+    def ticks(self):
+        del self._ticks
+
+    @property
+    def signature(self):
+        return self._signature
+
+    @signature.setter
+    def signature(self, value):
+        self._signature = value
+        self._update_signature()
+
+    @signature.deleter
+    def signature(self):
+        del self._signature
+
+    def _update_signature(self):
+        if (self._tempo != None and self._signature != None and 
+                self._division != None):
+            if self._division.mode == 'ppqn':
+                ppqn = self._division.ppqn
+            else:
+                ppqn = self._division.pps / self._tempo.bps
+            ppb = 4 / self._signature.denominator * ppqn
+            self._beats += math.floor(self._ticks / ppb)
+            self._ticks = self._ticks % ppb
+            if self._beats > self._signature.numerator:
+                self._bars += self._beats // self._signature.numerator
+                self._beats = self._beats % self._signature.numerator
+    
+    def __str__(self):
+        return '{bars}|{beats}|{ticks}'.format(bars=self.bars,
+                beats=self.beats, ticks=self.ticks)
+
+    def __repr__(self):
+        return '{name}(({bars}, {beats}, {ticks}))'.format(
+                name=type(self).__name__, bars=self.bars, beats=self.beats,
+                ticks=self.ticks)
+
 
 class Event(Delta):
     def __init__(self, **keywords):
