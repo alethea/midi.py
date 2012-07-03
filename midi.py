@@ -265,7 +265,8 @@ class Delta:
 
     def _update_tempo(self):
         if self._tempo != None and self._ticks != None:
-            if self._old_tempo != None and self._division.mode == 'pps':
+            if (self._old_tempo != None and self._division != None and 
+                    self._division.mode == 'pps'):
                 self._ticks *= self._tempo.bpm / self._old_tempo.bpm
             self._old_tempo = copy.deepcopy(self._tempo)
     
@@ -777,9 +778,40 @@ class Sequence(list):
             chunk = Chunk.parse(source)
             if chunk.id == 'MTrk':
                 sequence.append(Track.parse(chunk))
-        sequence.division = division
+        sequence._division = division
+        sequence.link()
         return sequence
 
+    def link(self):
+        tempo = Tempo()
+        signature = TimeSignature()
+        tracks = list()
+        def duration(track):
+            return track['duration']
+        for track in self:
+            tracks.append({
+                'duration': 0, 
+                'track': iter(track), 
+                'next': Event()})
+        while len(tracks) > 0:
+            track = min(tracks, key=duration)
+            track['next'].division = self._division
+            if isinstance(track['next'], SetTempo):
+                tempo = track['next'].tempo
+            else:
+                track['next'].tempo = tempo
+            if isinstance(track['next'], SetTimeSignature):
+                signature = track['next'].signature
+            else:
+                track['next'].signature = signature
+            try:
+                event = next(track['track'])
+            except StopIteration:
+                tracks.remove(track)
+            else:
+                track['duration'] += event.ticks
+                track['next'] = event
+    
     @property
     def format(self):
         return self._format
