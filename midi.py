@@ -966,7 +966,7 @@ class Sequence(list):
                 tracks[track][0] = ticks
             for track in tracks:
                 self.append(track[1])
-        else:
+        elif self._format != value:
             raise MIDIError(
                     'Cannot convert a format {0} sequence to format {1}.'\
                     .format(self._format, value))
