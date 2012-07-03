@@ -34,7 +34,7 @@ class Tempo:
         self.bpm = value * 60
 
     def __str__(self):
-        return str(self.bpm)
+        return '{bpm} BPM'.format(bpm=round(self.bpm))
 
     def __repr__(self):
         return 'Tempo({bpm})'.format(bpm=self.bpm)
