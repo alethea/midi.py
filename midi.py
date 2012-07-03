@@ -308,6 +308,7 @@ class Delta:
 class Time(Delta):
     def __init__(self, source=None, **keywords):
         signature = keywords.pop('signature', None)
+        division = keywords.pop('division', None)
         super().__init__(**keywords)
         if source == None:
             self._bars = keywords.get('bars', 0)
@@ -320,27 +321,28 @@ class Time(Delta):
             self._beats = int(source[1])
             self._ticks = int(source[2])
         elif isinstance(source, Delta):
-            self._division = source.division
             self._tempo = source.tempo
+            division = source.division
             signature = source.signature
             if isinstance(source, Time):
                 self._bars = source.bars
                 self._beats = source.beats
             else:
+                source._update_signature()
                 self._bars = 0
                 self._beats = 0
             self._ticks = source.ticks
-        self._signature = signature
-        self._update_signature()
+        self.division = division
+        self.signature = signature
     
     @property
     def bars(self):
         self._update_signature()
-        return self._bars
+        return self._bars + 1
 
     @bars.setter
     def bars(self, value):
-        self._bars = value
+        self._bars = value - 1
         self._update_signature()
 
     @bars.deleter
@@ -350,11 +352,11 @@ class Time(Delta):
     @property
     def beats(self):
         self._update_signature()
-        return self._beats
+        return self._beats + 1
 
     @beats.setter
     def beats(self, value):
-        self._beats = value
+        self._beats = value -1
         self._update_signature()
 
     @beats.deleter
@@ -400,9 +402,8 @@ class Time(Delta):
             ppb = 4 / self._signature.denominator * ppqn
             self._beats += math.floor(self._ticks / ppb)
             self._ticks = self._ticks % ppb
-            if self._beats > self._signature.numerator:
-                self._bars += self._beats // self._signature.numerator
-                self._beats = self._beats % self._signature.numerator
+            self._bars += self._beats // self._signature.numerator
+            self._beats = self._beats % self._signature.numerator
     
     def __add__(self, other):
         try:
@@ -410,6 +411,7 @@ class Time(Delta):
         except AttributeError:
             raise NotImplmented
         else:
+            time.division = self._division
             time._bars += self._bars
             time._beats += self._beats
             time._ticks += self._ticks
@@ -422,6 +424,7 @@ class Time(Delta):
         except AttributeError:
             raise NotImplmented
         else:
+            time.division = self._division
             time._bars = self._bars - time._bars
             time._beats = self._beats - time._beats
             time._ticks = self._ticks - time._ticks
