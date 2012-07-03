@@ -441,6 +441,7 @@ class Time(Delta):
 class Event(Delta):
     def __init__(self, **keywords):
         super().__init__(**keywords)
+        self.time = None
 
     @staticmethod
     def parse(source):
@@ -818,24 +819,6 @@ class Track(list):
             track.append(event)
         return track
 
-    def duration(self, event):
-        time = 0
-        if len(self) == 0:
-            return 0
-        if isinstance(event, numbers.Number):
-            if event < 0:
-                event = len(self) + event
-            for i in range(event + 1):
-                time = time + self[i].ticks
-        else:
-            for item in self:
-                time = time + item.ticks
-                if item is event:
-                    break
-            else:
-                return 0
-        return time
-
     def slice(self, start, end=None):
         if end == None:
             end = start
@@ -853,6 +836,12 @@ class Track(list):
             if time >= start:
                 track.append(event)
         return track
+    
+    def update_times(self):
+        time = Time()
+        for event in self:
+            time += event
+            event.time = time
 
     @property
     def division(self):
@@ -913,6 +902,8 @@ class Sequence(list):
                 sequence.append(Track.parse(chunk))
         sequence._division = division
         sequence.link()
+        for track in sequence:
+            track.update_times()
         return sequence
 
     def link(self):
