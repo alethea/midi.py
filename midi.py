@@ -324,7 +324,7 @@ class Event(Delta):
         return event
 
     def __str__(self):
-        return type(self.__name__)
+        return type(self).__name__
 
 class ChannelEvent(Event):
     def __init__(self, **keywords):
@@ -795,27 +795,25 @@ class Sequence(list):
                         .format(n=len(self)))
             self._format = value
             mixed = self.pop()
-            meta = Track()
-            data = Track()
-            mixed_ticks = 0
-            meta_ticks = 0
-            data_ticks = 0
+            ticks = 0
+            tracks = list()
+            for i in range(2):
+                tracks.append([0, Track()])
             for event in mixed:
-                mixed_ticks += event.ticks
+                ticks += event.ticks
                 if isinstance(event, MetaEvent):
-                    event.ticks = mixed_ticks - meta_ticks
-                    meta.append(event)
-                    meta_ticks = mixed_ticks
+                    track = 0
                 else:
-                    event.ticks = mixed_ticks - data_ticks
-                    data.append(event)
-                    data_ticks = mixed_ticks
-            self.append(meta)
-            self.append(data)
+                    track = 1
+                event.ticks = ticks - tracks[track][0]
+                tracks[track][1].append(event)
+                tracks[track][0] = ticks
+            for track in tracks:
+                self.append(track[1])
         else:
             raise MIDIError(
-                    'Cannot convert a format {0} sequence to {1}.'.format(
-                    self._format, value))
+                    'Cannot convert a format {0} sequence to format {1}.'\
+                    .format(self._format, value))
 
     @format.deleter
     def format(self):
