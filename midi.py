@@ -320,9 +320,9 @@ class Time(Delta):
             self._beats = int(source[1])
             self._ticks = int(source[2])
         elif isinstance(source, Delta):
-            self._divison = source.division
+            self._division = source.division
             self._tempo = source.tempo
-            self._signature = source.signature
+            signature = source.signature
             if isinstance(source, Time):
                 self._bars = source.bars
                 self._beats = source.beats
@@ -404,6 +404,30 @@ class Time(Delta):
                 self._bars += self._beats // self._signature.numerator
                 self._beats = self._beats % self._signature.numerator
     
+    def __add__(self, other):
+        try:
+            time = Time(other)
+        except AttributeError:
+            raise NotImplmented
+        else:
+            time._bars += self._bars
+            time._beats += self._beats
+            time._ticks += self._ticks
+            time._update_signature()
+            return time
+
+    def __sub__(self, other):
+        try:
+            time = Time(other)
+        except AttributeError:
+            raise NotImplmented
+        else:
+            time._bars = self._bars - time._bars
+            time._beats = self._beats - time._beats
+            time._ticks = self._ticks - time._ticks
+            time._update_signature()
+            return time
+
     def __str__(self):
         return '{bars}|{beats}|{ticks}'.format(bars=self.bars,
                 beats=self.beats, ticks=self.ticks)
