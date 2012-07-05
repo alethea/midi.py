@@ -271,26 +271,49 @@ class Delta:
             self._old_tempo = copy.deepcopy(self._tempo)
     
     def __add__(self, other):
-        try:
-            delta = Delta(other)
-        except AttributeError:
-            return NotImplemented
-        else:
-            delta.division = self.division
-            delta.tempo = self.tempo
-            delta.ticks += self.ticks
-            return delta
+        delta = self._prepare_operator(other)
+        delta._ticks = self._ticks + delta._ticks
+        return delta
 
     def __sub__(self, other):
+        delta = self._prepare_operator(other)
+        delta._ticks = self._ticks - delta._ticks
+        return delta
+
+    def __lt__(self, other):
+        delta = self._prepare_operator(other)
+        return round(self._ticks) < round(delta._ticks)
+
+    def __le__(self, other):
+        delta = self._prepare_operator(other)
+        return round(self._ticks) <= round(delta._ticks)
+
+    def __eq__(self, other):
+        delta = self._prepare_operator(other)
+        return round(self._ticks) == round(delta._ticks)
+
+    def __ne__(self, other):
+        delta = self._prepare_operator(other)
+        return round(self._ticks) != round(delta._ticks)
+
+    def __gt__(self, other):
+        delta = self._prepare_operator(other)
+        return round(self._ticks) > round(delta._ticks)
+
+    def __ge__(self, other):
+        delta = self._prepare_operator(other)
+        return round(self._ticks) >= round(delta._ticks)
+
+    def _prepare_operator(self, other):
+        self._update_division()
+        self._update_tempo()
         try:
             delta = Delta(other)
         except AttributeError:
-            return NotImplemented
-        else:
-            delta.division = self.division
-            delta.tempo = self.tempo
-            delta.ticks = self.ticks - delta.ticks
-            return delta
+            raise NotImplemented
+        delta.division = self._division
+        delta.tempo = self._tempo
+        return delta
 
     def __str__(self):
         return str(self.ticks)
@@ -481,6 +504,9 @@ class Time(Delta):
                     return True
 
     def _prepare_operator(self, other):
+        self._update_division()
+        self._update_tempo()
+        self._update_signature()
         try:
             time = Time(other)
         except AttributeError:
