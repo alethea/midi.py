@@ -310,16 +310,12 @@ class Time(Delta):
         signature = keywords.pop('signature', None)
         division = keywords.pop('division', None)
         super().__init__(**keywords)
-        if source == None:
-            self._bars = keywords.get('bars', 0)
-            self._beats = keywords.get('beats', 0)
-            self._ticks = keywords.get('ticks', 0)
-        elif isinstance(source, collections.Iterable):
+        if isinstance(source, collections.Iterable):
             if isinstance(source, str):
                 source = source.split('|')
             self._bars = int(source[0])
-            self._beats = int(source[1])
-            self._ticks = int(source[2])
+            self._beats = int(source[1]) - 1
+            self._ticks = int(source[2]) - 1
         elif isinstance(source, Delta):
             self._tempo = source.tempo
             division = source.division
@@ -332,6 +328,10 @@ class Time(Delta):
                 self._bars = 0
                 self._beats = 0
             self._ticks = source.ticks
+        else:
+            self._bars = keywords.get('bars', 0)
+            self._beats = keywords.get('beats', 0)
+            self._ticks = keywords.get('ticks', 0)
         self.division = division
         self.signature = signature
     
@@ -406,30 +406,87 @@ class Time(Delta):
             self._beats = self._beats % self._signature.numerator
     
     def __add__(self, other):
-        try:
-            time = Time(other)
-        except AttributeError:
-            raise NotImplmented
-        else:
-            time.division = self._division
-            time._bars += self._bars
-            time._beats += self._beats
-            time._ticks += self._ticks
-            time._update_signature()
-            return time
+        time = self._prepare_operator(other)
+        time._bars += self._bars
+        time._beats += self._beats
+        time._ticks += self._ticks
+        time._update_signature()
+        return time
 
     def __sub__(self, other):
+        time = self._prepare_operator(other)
+        time._bars = self._bars - time._bars
+        time._beats = self._beats - time._beats
+        time._ticks = self._ticks - time._ticks
+        time._update_signature()
+        return time
+
+    def __lt__(self, other):
+        time = self._prepare_operator(other)
+        if self._bars < time._bars:
+            return True
+        elif self._bars == time._bars:
+            if self._beats < time._beats:
+                return True
+            elif self._beats == time._beats:
+                if round(self._ticks) < round(time._ticks):
+                    return True
+        return False
+
+    def __le__(self, other):
+        time = self._prepare_operator(other)
+        if self._bars < time._bars:
+            return True
+        elif self._bars == time._bars:
+            if self._beats < time._beats:
+                return True
+            elif self._beats == time._beats:
+                if round(self._ticks) <= round(time._ticks):
+                    return True
+        return False
+
+    def __eq__(self, other):
+        time = self._prepare_operator(other)
+        return (self._bars == time._bars and
+                self._beats == time._beats and
+                round(self._ticks) == round(time._ticks))
+
+    def __ne__(self, other):
+        time = self._prepare_operator(other)
+        return (self._bars != time._bars or
+                self._beats != time._beats or
+                round(self._ticks) != round(time._ticks))
+
+    def __gt__(self, other):
+        time = self._prepare_operator(other)
+        if self._bars > time._bars:
+            return True
+        elif self._bars == time._bars:
+            if self._beats > time._beats:
+                return True
+            elif self._beats == time._beats:
+                if round(self._ticks) > round(time._ticks):
+                    return True
+        return False
+
+    def __gt__(self, other):
+        time = self._prepare_operator(other)
+        if self._bars > time._bars:
+            return True
+        elif self._bars == time._bars:
+            if self._beats > time._beats:
+                return True
+            elif self._beats == time._beats:
+                if round(self._ticks) >= round(time._ticks):
+                    return True
+
+    def _prepare_operator(self, other):
         try:
             time = Time(other)
         except AttributeError:
             raise NotImplmented
-        else:
-            time.division = self._division
-            time._bars = self._bars - time._bars
-            time._beats = self._beats - time._beats
-            time._ticks = self._ticks - time._ticks
-            time._update_signature()
-            return time
+        time.division = self._division
+        return time
 
     def __str__(self):
         return '{bars}|{beats}|{ticks}'.format(bars=self.bars,
