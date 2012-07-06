@@ -357,9 +357,9 @@ class Time(Delta):
         if isinstance(source, collections.Iterable):
             if isinstance(source, str):
                 source = source.split('|')
-            self._bars = int(source[0])
+            self._bars = int(source[0]) - 1
             self._beats = int(source[1]) - 1
-            self._ticks = int(source[2]) - 1
+            self._ticks = int(source[2])
         elif isinstance(source, Delta):
             self._tempo = source.tempo
             self._old_division = source.division
