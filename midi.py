@@ -352,7 +352,7 @@ class Delta:
 class Time(Delta):
     def __init__(self, source=None, **keywords):
         signature = keywords.pop('signature', None)
-        division = keywords.pop('division', None)
+        division = keywords.pop('division', TimeDivision(480))
         super().__init__(**keywords)
         if isinstance(source, collections.Iterable):
             if isinstance(source, str):
@@ -362,7 +362,7 @@ class Time(Delta):
             self._ticks = int(source[2]) - 1
         elif isinstance(source, Delta):
             self._tempo = source.tempo
-            division = source.division
+            self._old_division = source.division
             signature = source.signature
             if isinstance(source, Time):
                 source._update_signature()
@@ -371,7 +371,7 @@ class Time(Delta):
             else:
                 self._bars = 0
                 self._beats = 0
-            self._ticks = source.ticks
+            self._ticks = source._ticks
         else:
             self._bars = keywords.get('bars', 0)
             self._beats = keywords.get('beats', 0)
