@@ -301,6 +301,8 @@ class Delta:
         return round(self._ticks) <= round(delta._ticks)
 
     def __eq__(self, other):
+        if other == None:
+            return False
         try:
             delta = self._prepare_operator(other)
         except AttributeError:
@@ -308,6 +310,8 @@ class Delta:
         return round(self._ticks) == round(delta._ticks)
 
     def __ne__(self, other):
+        if other == None:
+            return True
         try:
             delta = self._prepare_operator(other)
         except AttributeError:
@@ -502,6 +506,8 @@ class Time(Delta):
         return False
 
     def __eq__(self, other):
+        if other == None:
+            return False
         try:
             time = self._prepare_operator(other)
         except AttributeError:
@@ -511,6 +517,8 @@ class Time(Delta):
                 round(self._ticks) == round(time._ticks))
 
     def __ne__(self, other):
+        if other == None:
+            return True
         try:
             time = self._prepare_operator(other)
         except AttributeError:
