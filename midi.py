@@ -177,13 +177,15 @@ class Delta:
         elif isinstance(source, numbers.Number):
             self.ticks = source
         elif isinstance(source, Delta):
+            self._update_division()
+            self._update_tempo()
             self._division = source.division
             self._tempo = source.tempo
             self.signature = source.signature
             if isinstance(source, Time):
                 self.ticks = source._total_ticks()
             else:
-                self.ticks = source.ticks
+                self.ticks = source._ticks
         else:
             self.ticks = _var_int_parse(source)
 
@@ -374,8 +376,8 @@ class Time(Delta):
             signature = source.signature
             if isinstance(source, Time):
                 source._update_signature()
-                self._bars = source.bars
-                self._beats = source.beats
+                self._bars = source._bars
+                self._beats = source._beats
             else:
                 self._bars = 0
                 self._beats = 0
