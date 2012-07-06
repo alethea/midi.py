@@ -176,10 +176,14 @@ class Delta:
             self.ticks = 0
         elif isinstance(source, numbers.Number):
             self.ticks = source
-        elif isinstance(source, type(self)):
+        elif isinstance(source, Delta):
             self._division = source.division
             self._tempo = source.tempo
-            self.ticks = source.ticks
+            self.signature = source.signature
+            if isinstance(source, Time):
+                self.ticks = source._total_ticks()
+            else:
+                self.ticks = source.ticks
         else:
             self.ticks = _var_int_parse(source)
 
@@ -439,6 +443,25 @@ class Time(Delta):
     @signature.deleter
     def signature(self):
         del self._signature
+
+    def _total_tick(self):
+        self._update_division()
+        self._update_tempo()
+        self._update_signature()
+        if (self._tempo != None and self._signature != None and 
+                self._division != None):
+            if self._division.mode == 'ppqn':
+                ppqn = self._division.ppqn
+            else:
+                ppqn = self._division.pps / self._tempo.bps
+            ppb = 4 / self._signature.denominator * ppqn
+            beats = self._beats
+            beats += self._bars / signature._denominator
+            ticks = self._ticks
+            ticks += beats / ppb
+            return ticks
+        else:
+            return None
 
     def _update_signature(self):
         if (self._tempo != None and self._signature != None and 
