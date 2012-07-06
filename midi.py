@@ -271,46 +271,67 @@ class Delta:
             self._old_tempo = copy.deepcopy(self._tempo)
     
     def __add__(self, other):
-        delta = self._prepare_operator(other)
+        try:
+            delta = self._prepare_operator(other)
+        except AttributeError:
+            return NotImplemented
         delta._ticks = self._ticks + delta._ticks
         return delta
 
     def __sub__(self, other):
-        delta = self._prepare_operator(other)
+        try:
+            delta = self._prepare_operator(other)
+        except AttributeError:
+            return NotImplemented
         delta._ticks = self._ticks - delta._ticks
         return delta
 
     def __lt__(self, other):
-        delta = self._prepare_operator(other)
+        try:
+            delta = self._prepare_operator(other)
+        except AttributeError:
+            return NotImplemented
         return round(self._ticks) < round(delta._ticks)
 
     def __le__(self, other):
-        delta = self._prepare_operator(other)
+        try:
+            delta = self._prepare_operator(other)
+        except AttributeError:
+            return NotImplemented
         return round(self._ticks) <= round(delta._ticks)
 
     def __eq__(self, other):
-        delta = self._prepare_operator(other)
+        try:
+            delta = self._prepare_operator(other)
+        except AttributeError:
+            return NotImplemented
         return round(self._ticks) == round(delta._ticks)
 
     def __ne__(self, other):
-        delta = self._prepare_operator(other)
+        try:
+            delta = self._prepare_operator(other)
+        except AttributeError:
+            return NotImplemented
         return round(self._ticks) != round(delta._ticks)
 
     def __gt__(self, other):
-        delta = self._prepare_operator(other)
+        try:
+            delta = self._prepare_operator(other)
+        except AttributeError:
+            return NotImplemented
         return round(self._ticks) > round(delta._ticks)
 
     def __ge__(self, other):
-        delta = self._prepare_operator(other)
+        try:
+            delta = self._prepare_operator(other)
+        except AttributeError:
+            return NotImplemented
         return round(self._ticks) >= round(delta._ticks)
 
     def _prepare_operator(self, other):
         self._update_division()
         self._update_tempo()
-        try:
-            delta = Delta(other)
-        except AttributeError:
-            raise NotImplemented
+        delta = Delta(other)
         delta.division = self._division
         delta.tempo = self._tempo
         return delta
@@ -344,10 +365,10 @@ class Time(Delta):
             division = source.division
             signature = source.signature
             if isinstance(source, Time):
+                source._update_signature()
                 self._bars = source.bars
                 self._beats = source.beats
             else:
-                source._update_signature()
                 self._bars = 0
                 self._beats = 0
             self._ticks = source.ticks
@@ -429,7 +450,10 @@ class Time(Delta):
             self._beats = self._beats % self._signature.numerator
     
     def __add__(self, other):
-        time = self._prepare_operator(other)
+        try:
+            time = self._prepare_operator(other)
+        except AttributeError:
+            return NotImplemented
         time._bars += self._bars
         time._beats += self._beats
         time._ticks += self._ticks
@@ -437,7 +461,10 @@ class Time(Delta):
         return time
 
     def __sub__(self, other):
-        time = self._prepare_operator(other)
+        try:
+            time = self._prepare_operator(other)
+        except AttributeError:
+            return NotImplemented
         time._bars = self._bars - time._bars
         time._beats = self._beats - time._beats
         time._ticks = self._ticks - time._ticks
@@ -445,7 +472,10 @@ class Time(Delta):
         return time
 
     def __lt__(self, other):
-        time = self._prepare_operator(other)
+        try:
+            time = self._prepare_operator(other)
+        except AttributeError:
+            return NotImplemented
         if self._bars < time._bars:
             return True
         elif self._bars == time._bars:
@@ -457,7 +487,10 @@ class Time(Delta):
         return False
 
     def __le__(self, other):
-        time = self._prepare_operator(other)
+        try:
+            time = self._prepare_operator(other)
+        except AttributeError:
+            return NotImplemented
         if self._bars < time._bars:
             return True
         elif self._bars == time._bars:
@@ -469,19 +502,28 @@ class Time(Delta):
         return False
 
     def __eq__(self, other):
-        time = self._prepare_operator(other)
+        try:
+            time = self._prepare_operator(other)
+        except AttributeError:
+            return NotImplemented
         return (self._bars == time._bars and
                 self._beats == time._beats and
                 round(self._ticks) == round(time._ticks))
 
     def __ne__(self, other):
-        time = self._prepare_operator(other)
+        try:
+            time = self._prepare_operator(other)
+        except AttributeError:
+            return NotImplemented
         return (self._bars != time._bars or
                 self._beats != time._beats or
                 round(self._ticks) != round(time._ticks))
 
     def __gt__(self, other):
-        time = self._prepare_operator(other)
+        try:
+            time = self._prepare_operator(other)
+        except AttributeError:
+            return NotImplemented
         if self._bars > time._bars:
             return True
         elif self._bars == time._bars:
@@ -492,8 +534,11 @@ class Time(Delta):
                     return True
         return False
 
-    def __gt__(self, other):
-        time = self._prepare_operator(other)
+    def __ge__(self, other):
+        try:
+            time = self._prepare_operator(other)
+        except AttributeError:
+            return NotImplemented
         if self._bars > time._bars:
             return True
         elif self._bars == time._bars:
@@ -502,15 +547,13 @@ class Time(Delta):
             elif self._beats == time._beats:
                 if round(self._ticks) >= round(time._ticks):
                     return True
+        return False
 
     def _prepare_operator(self, other):
         self._update_division()
         self._update_tempo()
         self._update_signature()
-        try:
-            time = Time(other)
-        except AttributeError:
-            raise NotImplmented
+        time = Time(other)
         time.division = self._division
         return time
 
