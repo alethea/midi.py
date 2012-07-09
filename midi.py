@@ -177,17 +177,20 @@ class Delta:
         elif isinstance(source, numbers.Number):
             self.ticks = source
         elif isinstance(source, Delta):
-            self._update_division()
-            self._update_tempo()
-            self._division = source.division
-            self._tempo = source.tempo
-            self.signature = source.signature
+            self._division = source._division
+            self._tempo = source._tempo
             if isinstance(source, Time):
-                self.ticks = source._total_ticks()
+                self.signature = source._signature
+                self._ticks = source._total_ticks()
             else:
-                self.ticks = source._ticks
+                source._update_division()
+                source._update_tempo()
+                self.signature = source.signature
+                self._ticks = source._ticks
         else:
             self.ticks = _var_int_parse(source)
+        self._update_tempo()
+        self._update_division()
 
     @property
     def ticks(self):
@@ -361,9 +364,14 @@ class Delta:
 
 class Time(Delta):
     def __init__(self, source=None, **keywords):
-        signature = keywords.pop('signature', None)
-        division = keywords.pop('division', TimeDivision(480))
-        super().__init__(**keywords)
+        division = keywords.get('division', TimeDivision(480))
+        tempo = keywords.get('tempo', None)
+        signature = keywords.get('signature', None)
+        self._division = division
+        self._old_division = division
+        self._tempo = tempo
+        self._old_tempo = tempo
+        self._ticks = None
         if isinstance(source, collections.Iterable):
             if isinstance(source, str):
                 source = source.split('|')
@@ -373,12 +381,13 @@ class Time(Delta):
         elif isinstance(source, Delta):
             self._tempo = source.tempo
             self._old_division = source.division
-            signature = source.signature
             if isinstance(source, Time):
+                signature = source._signature
                 source._update_signature()
                 self._bars = source._bars
                 self._beats = source._beats
             else:
+                signature = source.signature
                 self._bars = 0
                 self._beats = 0
             self._ticks = source._ticks
@@ -386,8 +395,11 @@ class Time(Delta):
             self._bars = keywords.get('bars', 0)
             self._beats = keywords.get('beats', 0)
             self._ticks = keywords.get('ticks', 0)
-        self.division = division
-        self.signature = signature
+        self._division = division
+        self._signature = signature
+        self._update_division()
+        self._update_tempo()
+        self._update_signature()
     
     @property
     def bars(self):
@@ -446,7 +458,7 @@ class Time(Delta):
     def signature(self):
         del self._signature
 
-    def _total_tick(self):
+    def _total_ticks(self):
         self._update_division()
         self._update_tempo()
         self._update_signature()
@@ -458,9 +470,9 @@ class Time(Delta):
                 ppqn = self._division.pps / self._tempo.bps
             ppb = 4 / self._signature.denominator * ppqn
             beats = self._beats
-            beats += self._bars / signature._denominator
+            beats += self._bars * self._signature.numerator
             ticks = self._ticks
-            ticks += beats / ppb
+            ticks += beats * ppb
             return ticks
         else:
             return None
