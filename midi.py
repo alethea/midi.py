@@ -623,7 +623,7 @@ class Event(Delta):
             source = iter(source)
         ticks = _var_int_parse(source)
         status = next(source)
-        if status == 0xff:
+        if status == MetaEvent.status:
             event = MetaEvent._parse(source)
         elif status == 0xf7 or status == 0xf0:
             event = SysExEvent._parse(source, status)
@@ -645,23 +645,23 @@ class ChannelEvent(Event):
         if cls == ChannelEvent:
             channel = status & 0x0f
             type = status & 0xf0
-            events = {
-                    0x80: NoteOff,
-                    0x90: NoteOn,
-                    0xa0: NoteAftertouch,
-                    0xb0: Controller,
-                    0xc0: ProgramChange,
-                    0xd0: ChannelAftertouch,
-                    0xe0: PitchBend }
-            if type not in events:
+            if type not in ChannelEvent._events:
                 raise MIDIError(
                         'Encountered an unkown event: {status:X}.'.format(
                         status=status))
-            event = events[type]._parse(source)
+            event = ChannelEvent._events[type]._parse(source)
             event.channel = channel
             return event
         else:
             return cls(next(source), next(source))
+
+    @property
+    def type(self):
+        return ChannelEvent._types[type(self)]
+
+    @property
+    def status(self):
+        return self.type | self.channel
 
     def __repr__(self):
         parameters = self._parameters()
@@ -674,18 +674,8 @@ class ChannelEvent(Event):
 
     def __bytes__(self):
         array = bytearray()
-        
-        statuses = {
-                NoteOff: 0x80,
-                NoteOn: 0x90,
-                NoteAftertouch: 0xa0,
-                Controller: 0xb0,
-                ProgramChange: 0xc0,
-                ChannelAftertouch: 0xd0,
-                PitchBend: 0xe0 }
-
         array.extend(Delta.__bytes__(self))
-        array.append(statuses[type(self)] | self.channel)
+        array.append(self.status)
         array.extend(self._parameters())
         return bytes(array)
 
@@ -717,13 +707,13 @@ class NoteAftertouch(ChannelEvent):
         return (self.note, self.value)
 
 class Controller(ChannelEvent):
-    def __init__(self, type=None, value=None, **keywords):
+    def __init__(self, controller=None, value=None, **keywords):
         super().__init__(**keywords)
-        self.type = type
+        self.controller = controller
         self.value = value
 
     def _parameters(self):
-        return (self.type, self.value)
+        return (self.controller, self.value)
     
 class ProgramChange(ChannelEvent):
     def __init__(self, program=None, **keywords):
@@ -768,31 +758,19 @@ class MetaEvent(Event):
     def _parse(cls, source):
         if cls == MetaEvent:
             type = next(source)
-
-            events = {
-                    0x00: SequenceNumber,
-                    0x01: Text,
-                    0x02: Copyright,
-                    0x03: Name,
-                    0x04: Instrument,
-                    0x05: Lyrics,
-                    0x06: Marker,
-                    0x07: CuePoint,
-                    0x20: ChannelPrefix,
-                    0x2f: EndTrack,
-                    0x51: SetTempo,
-                    0x54: SMPTEOffset,
-                    0x58: SetTimeSignature,
-                    0x59: SetKeySignature,
-                    0x7f: ProprietaryEvent }
-
-            return events[type]._parse(source)
+            return cls._events[type]._parse(source)
         else:
             length = _var_int_parse(source)
             data = bytearray()
             for i in range(length):
                 data.append(next(source))
             return cls(data)
+    
+    status = 0xff
+
+    @property
+    def type(self):
+        return MetaEvent._types[type(self)]
 
     def __repr__(self):
         return '{name}({data!r})'.format(
@@ -801,27 +779,9 @@ class MetaEvent(Event):
     def __bytes__(self):
         array = bytearray()
         data = self._bytes()
-
-        types = {
-                SequenceNumber: 0x00,
-                Text: 0x01,
-                Copyright: 0x02,
-                Name: 0x03,
-                Instrument: 0x04,
-                Lyrics: 0x05,
-                Marker: 0x06,
-                CuePoint: 0x07,
-                ChannelPrefix: 0x20,
-                EndTrack: 0x2f,
-                SetTempo: 0x51,
-                SMPTEOffset: 0x54,
-                SetTimeSignature: 0x58,
-                SetKeySignature: 0x59,
-                ProprietaryEvent: 0x7f }
-
         array.extend(Delta.__bytes__(self))
-        array.append(0xff)
-        array.append(types[type(self)])
+        array.append(self.status)
+        array.append(self.type)
         array.extend(_var_int_bytes(len(data)))
         array.extend(data)
         return bytes(array)
@@ -1263,6 +1223,35 @@ def _var_int_bytes(value):
     array[0] = array[0] & 0x7f
     array = reversed(array)
     return bytes(array)
+            
+ChannelEvent._events = {
+        0x80: NoteOff,
+        0x90: NoteOn,
+        0xa0: NoteAftertouch,
+        0xb0: Controller,
+        0xc0: ProgramChange,
+        0xd0: ChannelAftertouch,
+        0xe0: PitchBend }
+ChannelEvent._types = {
+        value: key for key, value in ChannelEvent._events.items()}
+
+MetaEvent._events = {
+        0x00: SequenceNumber,
+        0x01: Text,
+        0x02: Copyright,
+        0x03: Name,
+        0x04: Instrument,
+        0x05: Lyrics,
+        0x06: Marker,
+        0x07: CuePoint,
+        0x20: ChannelPrefix,
+        0x2f: EndTrack,
+        0x51: SetTempo,
+        0x54: SMPTEOffset,
+        0x58: SetTimeSignature,
+        0x59: SetKeySignature,
+        0x7f: ProprietaryEvent }
+MetaEvent._types = {value: key for key, value in MetaEvent._events.items()}
 
 class MIDIError(Exception):
     pass
