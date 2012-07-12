@@ -183,9 +183,17 @@ class Program:
     def name(self):
         return Program._names.get(self.number, None)
 
+    @name.setter
+    def name(self, value):
+        self.number = Program._lower_numbers.get(value.lower(), 1)
+
     @property
     def desc(self):
         return Program._descs.get(self.number, None)
+
+    @desc.setter
+    def desc(self, value):
+        self.number = Program._desc_numbers.get(value, 1)
 
     def __str__(self):
         return Program._descs.get(self.number, '')
