@@ -172,9 +172,12 @@ class Program:
         elif isinstance(source, str):
             self.number = Program._lower_numbers.get(source.lower(), None)
             if self.number == None:
-                self.number = Progam._desc_numbers.get(sources, None)
+                self.number = Program._desc_numbers.get(source, None)
         else:
             self.number = int.from_bytes(source, 'big') + 1
+        if self.number == None or self.number < 1 or self.number > 128:
+            raise MIDIError('MIDI Prgram \'{source}\' is undefined.'.format(
+                source=source))
 
     @property
     def name(self):
