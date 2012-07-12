@@ -1429,3 +1429,6 @@ Program._desc_numbers = {value: key for key, value in Program._descs.items()}
 Program._lower_numbers = {
         value.lower(): key for key, value in Program._names.items()}
 
+Program.names = Program._names.values()
+Program.descs = Program._descs.values()
+
