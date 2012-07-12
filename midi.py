@@ -647,8 +647,8 @@ class Time(Delta):
 
 class Event(Delta):
     def __init__(self, **keywords):
+        self.time = keywords.pop('time', Time())
         super().__init__(**keywords)
-        self.time = None
 
     @staticmethod
     def parse(source):
@@ -670,8 +670,8 @@ class Event(Delta):
 
 class ChannelEvent(Event):
     def __init__(self, **keywords):
+        self.channel = keywords.pop('channel', None)
         super().__init__(**keywords)
-        self.channel = keywords.get('channel', None)
     
     @classmethod
     def _parse(cls, source=None, status=None):
@@ -751,7 +751,12 @@ class Controller(ChannelEvent):
 class ProgramChange(ChannelEvent):
     def __init__(self, program=None, **keywords):
         super().__init__(**keywords)
-        self.program = Program(program + 1)
+        if isinstance(program, Program) or program == None:
+            self.program = program
+        elif isinstance(program, numbers.Number):
+            self.program = Program(program + 1)
+        else:
+            self.program = Program(program)
 
     @classmethod
     def _parse(cls, source):
