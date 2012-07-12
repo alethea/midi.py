@@ -163,6 +163,36 @@ class TimeSignature:
         array.append(self.quarter)
         return bytes(array)
 
+class Program:
+    def __init__(self, source=None):
+        if source == None:
+            self.number = 1
+        elif isinstance(source, numbers.Number):
+            self.number = int(source)
+        elif isinstance(source, str):
+            self.number = Program._lower_numbers.get(source.lower(), None)
+            if self.number == None:
+                self.number = Progam._desc_numbers.get(sources, None)
+        else:
+            self.number = int.from_bytes(source, 'big') + 1
+
+    @property
+    def name(self):
+        return Program._names.get(self.number, None)
+
+    @property
+    def desc(self):
+        return Program._descs.get(self.number, None)
+
+    def __str__(self):
+        return Program._descs.get(self.number, '')
+
+    def __repr__(self):
+        return 'Program({name!r})'.format(name=self.name)
+
+    def __bytes__(self):
+        return (self.number - 1).to_bytes(1, 'big')
+
 class Delta:
     def __init__(self, source=None, division=None, tempo=None, 
             signature=None):
@@ -718,14 +748,19 @@ class Controller(ChannelEvent):
 class ProgramChange(ChannelEvent):
     def __init__(self, program=None, **keywords):
         super().__init__(**keywords)
-        self.program = program
+        self.program = Program(program + 1)
 
     @classmethod
     def _parse(cls, source):
         return cls(next(source))
 
     def _parameters(self):
-        return (self.program,)
+        return (self.program.number - 1,)
+
+    def __repr__(self):
+        return '{type}({program!r})'.format(type=type(self).__name__, 
+                program=self.program)
+
 
 class ChannelAftertouch(ChannelEvent):
     def __init__(self, amount=None, **keywords):
@@ -1224,6 +1259,9 @@ def _var_int_bytes(value):
     array = reversed(array)
     return bytes(array)
             
+class MIDIError(Exception):
+    pass
+
 ChannelEvent._events = {
         0x80: NoteOff,
         0x90: NoteOn,
@@ -1253,6 +1291,141 @@ MetaEvent._events = {
         0x7f: ProprietaryEvent }
 MetaEvent._types = {value: key for key, value in MetaEvent._events.items()}
 
-class MIDIError(Exception):
-    pass
+Program._descs = {
+        1: 'Acoustic Grand Piano',
+        2: 'Bright Acoustic Piano',
+        3: 'Electric Grand Piano',
+        4: 'Honky Tonk Piano',
+        5: 'Electric Piano 1',
+        6: 'Electric Piano 2',
+        7: 'Harpsicord',
+        8: 'Clavient',
+        9: 'Celesta',
+        10: 'Glockenspiel',
+        11: 'Music Box',
+        12: 'Vibraphone',
+        13: 'Marimba',
+        14: 'Xylophone',
+        15: 'Tubular Bells',
+        16: 'Dulcimer',
+        17: 'Drawbar Organ',
+        18: 'Precussive Organ',
+        19: 'Rock Organ',
+        20: 'Church Organ',
+        21: 'Reed Organ',
+        22: 'Accordion',
+        23: 'Harmonica',
+        24: 'Tango Accordion',
+        25: 'Acoustic Guitar (Nylon)',
+        26: 'Acoustic Guitar (Steel)',
+        27: 'Electric Guitar (Jazz)',
+        28: 'Electric Guitar (Clean)',
+        29: 'Electric Guitar (Muted)',
+        30: 'Overdriven Guitar',
+        31: 'Distortion Guitat',
+        32: 'Guitar Harmonics',
+        33: 'Acoustic Bass',
+        34: 'Electric Bass (Finger)',
+        35: 'Electric Bass (Pick)',
+        36: 'Fretless Bass',
+        37: 'Slap Bass 1',
+        38: 'Slap Bass 2',
+        39: 'Synth Bass 1',
+        40: 'Synth Bass 2',
+        41: 'Violin',
+        42: 'Viola',
+        43: 'Cello',
+        44: 'Contrabass',
+        45: 'Tremolo Strings',
+        46: 'Pizzicato Strings',
+        47: 'Orchestral Harp',
+        48: 'Timpani',
+        49: 'String Ensemble 1',
+        50: 'String Ensemble 2',
+        51: 'Synth Strings 1',
+        52: 'Synth Strings 2',
+        53: 'Choir Aahs',
+        54: 'Choir Oohs',
+        55: 'Synth Choir',
+        56: 'Orchestra Hit',
+        57: 'Trumpet',
+        58: 'Trombone',
+        59: 'Tuba',
+        60: 'Muted Trumpet',
+        61: 'French Horn',
+        62: 'Brass Section',
+        63: 'Synth Brass 1',
+        64: 'Synth Brass 2',
+        65: 'Soprano Sax',
+        66: 'Alto Sax',
+        67: 'Tenor Sax',
+        68: 'Baritone Sax',
+        69: 'Oboe',
+        70: 'English Horn',
+        71: 'Bassoon',
+        72: 'Clarinet',
+        73: 'Piccolo',
+        74: 'Flute',
+        75: 'Recorder',
+        76: 'Pan Flute',
+        77: 'Brown Bottle',
+        78: 'Sakuhachi',
+        79: 'Whistle',
+        80: 'Ocarina',
+        81: 'Square Lead',
+        82: 'Sawtooth Lead',
+        83: 'Calliope Lead',
+        84: 'Chiff Lead',
+        85: 'Charang Lead',
+        86: 'Voice Lead',
+        87: 'Fifths Lead',
+        88: 'Bass Lead',
+        89: 'New Age Pad',
+        90: 'Warm Pad',
+        91: 'Polysynth Pad',
+        92: 'Choir Pad',
+        93: 'Bowed Glass Pad',
+        94: 'Metallic Pad',
+        95: 'Halo Pad',
+        96: 'Sweep Pad',
+        97: 'Rain',
+        98: 'Soundtrack',
+        99: 'Crystal',
+        100: 'Atmosphere',
+        101: 'Brightness',
+        102: 'Goblin',
+        103: 'Echo',
+        104: 'Sci-Fi',
+        105: 'Sitar',
+        106: 'Banjo',
+        107: 'Shamisen',
+        108: 'Koto',
+        109: 'Kalimba',
+        110: 'Bagpipe',
+        111: 'Fiddle',
+        112: 'Shanai',
+        113: 'Tinkle Bell',
+        114: 'Agogo',
+        115: 'Steel Drums',
+        116: 'Woodblock',
+        117: 'Taiko Drum',
+        118: 'Melodic Tom',
+        119: 'Synth Drum',
+        120: 'Reverse Cymbal',
+        121: 'Guitar Fret Noise',
+        122: 'Breath Noise',
+        123: 'Seahorse',
+        124: 'Bird Tweet',
+        125: 'Telephone',
+        126: 'Helicopter',
+        127: 'Applause',
+        128: 'Gunshot'}
+
+Program._names = dict()
+for key, value in Program._descs.items():
+    Program._names[key] = ''.join(filter(lambda x: x not in ' ()-', value))
+
+Program._desc_numbers = {value: key for key, value in Program._descs.items()}
+Program._lower_numbers = {
+        value.lower(): key for key, value in Program._names.items()}
 
