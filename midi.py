@@ -1075,8 +1075,6 @@ class Sequence(list):
     @staticmethod
     def parse(source):
         sequence = Sequence()
-        if not isinstance(source, collections.Iterator):
-            source = iter(source)
         chunk = Chunk.parse(source, id='MThd')
         sequence.format = int.from_bytes(chunk[0:2], 'big')
         tracks = int.from_bytes(chunk[2:4], 'big')
@@ -1195,37 +1193,49 @@ class Chunk(bytearray):
     @staticmethod
     def parse(source, id=None):
         chunk = Chunk()
+        if isinstance(source, io.IOBase):
+            if hasattr(source, 'mode'):
+                if 'b' not in source.mode:
+                    raise MIDIError('Cannot parse text mode file.')
+            start = source.tell()
         if not isinstance(source, collections.Iterator):
             source = iter(source)
         length = 8
         mode = 'id'
         while True:
-            item = next(source)
+            try:
+                item = next(source)
+            except StopIteration:
+                if mode != 'data':
+                    raise MIDIError(
+                            'Incomplete chunk header. Read {got}/8 bytes.'\
+                            .format(got=len(chunk)))
+                raise MIDIError(
+                        'Incomplete {id} chunk. Read {got}/{total} bytes.'\
+                        .format(got=len(chunk), total=length, id=chunk.id))
+
             if isinstance(item, int):
                 chunk.append(item)
             else:
                 chunk.extend(item)
 
-            if mode == 'data' and len(chunk) >= length:
-                del chunk[length:] 
-                del chunk[:8]
-                break
-            elif mode == 'len' and len(chunk) >= 8:
-                length = int.from_bytes(chunk[4:8], 'big') + 8
-                mode = 'data'
-            elif mode == 'id' and len(chunk) >= 4:
-                chunk.id = chunk[0:4].decode('ascii')
+            if mode == 'id' and len(chunk) >= 4:
+                try:
+                    chunk.id = chunk[0:4].decode('ascii')
+                except UnicodeError:
+                    raise MIDIError( 'Encountered a non-ASCII chunk ID.')
                 if id and id != chunk.id:
                     raise MIDIError('{id} chunk not found.'.format(id=id))
                 mode = 'len'
-        else:
-            raise MIDIError(
-                    'Incompete {id} chunk. Read {got}/{total} bytes.'.format(
-                    got=len(chunk), total=length, id=chunk.id))
-
-        if isinstance(source, io.IOBase):
-            source.seek(length + 8 - source.tell(), io.SEEK_CUR)
-        return chunk
+            if mode == 'len' and len(chunk) >= 8:
+                length = int.from_bytes(chunk[4:8], 'big') + 8
+                mode = 'data'
+            if mode == 'data' and len(chunk) >= length:
+                if isinstance(source, io.IOBase):
+                    source.seek(start + length)
+                del chunk[length:] 
+                del chunk[:8]
+                return chunk
 
     @property
     def raw(self):
