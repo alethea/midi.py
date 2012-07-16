@@ -1010,7 +1010,11 @@ class Sequence(list):
                 data = iter(chunk)
                 cumulative = 0
                 while True:
-                    event = Event.parse(data)
+                    try:
+                        event = Event.parse(data)
+                    except StopIteration:
+                        raise MIDIError(
+                            'Incomplete track. End Track event not found.')
                     if isinstance(event, EndTrack):
                         break
                     cumulative += event.ticks
