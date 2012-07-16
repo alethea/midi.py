@@ -656,6 +656,7 @@ class Time(Delta):
 class Event(Delta):
     def __init__(self, **keywords):
         self.time = keywords.pop('time', Time())
+        self.track = keywords.pop('track', None)
         super().__init__(**keywords)
 
     @staticmethod
@@ -986,139 +987,43 @@ class ProprietaryEvent(MetaEvent):
 class SysExEvent(Event):
     pass
 
-class Track(list):
-    def __init__(self, events=list(), division=None, tempo=None):
-        super().__init__(events)
-        self.division = division
-        self.tempo = tempo
-
-    @staticmethod
-    def parse(source):
-        track = Track()
-        if not isinstance(source, collections.Iterator):
-            source = iter(source)
-        while True:
-            event = Event.parse(source)
-            if isinstance(event, EndTrack):
-                break
-            track.append(event)
-        return track
-
-    def slice(self, start, end=None):
-        if end == None:
-            end = start
-            start = 0
-        if start < 0:
-            start = len(self) + start
-        if end < 0:
-            end = len(self) + end
-        track = Track()
-        time = 0
-        for event in self:
-            time = time + event.ticks
-            if time >= end:
-                break
-            if time >= start:
-                track.append(event)
-        return track
-    
-    def update_times(self):
-        time = Time()
-        for event in self:
-            time += event
-            event.time = time
-
-    @property
-    def division(self):
-        return self._division
-
-    @division.setter
-    def division(self, value):
-        self._division = value
-        for event in self:
-            event.division = self._division
-
-    @division.deleter
-    def division(self):
-        del self._division
-
-    @property
-    def tempo(self):
-        return self._tempo
-
-    @tempo.setter
-    def tempo(self, value):
-        self._tempo = value
-        for event in self:
-            event.tempo = self._tempo
-
-    @tempo.deleter
-    def tempo(self):
-        del self._tempo
-
-    def __bytes__(self):
-        array = bytearray()
-        for item in self:
-            array.extend(bytes(item))
-        end_track = EndTrack()
-        end_track.ticks = 0
-        array.extend(bytes(end_track))
-        return bytes(array)
-
 class Sequence(list):
-    def __init__(self, tracks=list(), format=None, division=None):
-        super().__init__(tracks)
+    def __init__(self, events=list(), format=None, division=None):
+        super().__init__(events)
         self._format = None
         self.format = format
         self.division = division
 
     @staticmethod
     def parse(source):
+        if not isinstance(source, collections.Iterator):
+            source = iter(source)
         sequence = Sequence()
         chunk = Chunk.parse(source, id='MThd')
         sequence.format = int.from_bytes(chunk[0:2], 'big')
         tracks = int.from_bytes(chunk[2:4], 'big')
-        division = TimeDivision(chunk[4:6])
-        for i in range(tracks):
+        sequence._division = TimeDivision(chunk[4:6])
+        for track in range(tracks):
             chunk = Chunk.parse(source)
             if chunk.id == 'MTrk':
-                sequence.append(Track.parse(chunk))
-        sequence._division = division
-        sequence.link()
-        for track in sequence:
-            track.update_times()
+                data = iter(chunk)
+                cumulative = 0
+                while True:
+                    event = Event.parse(data)
+                    if isinstance(event, EndTrack):
+                        break
+                    cumulative += event.ticks
+                    event.cumulative = cumulative
+                    event.track = track
+                    event.division = sequence._division
+                    sequence.append(event)
+        def cumulative(event):
+            return event.cumulative
+        sequence.sort(key=cumulative)
+        for event in sequence:
+            del event.cumulative
         return sequence
 
-    def link(self):
-        tempo = Tempo()
-        signature = TimeSignature()
-        tracks = list()
-        def duration(track):
-            return track['duration']
-        for track in self:
-            tracks.append({
-                'duration': 0, 
-                'track': iter(track), 
-                'next': Event()})
-        while len(tracks) > 0:
-            track = min(tracks, key=duration)
-            track['next'].division = self._division
-            if isinstance(track['next'], SetTempo):
-                tempo = track['next'].tempo
-            else:
-                track['next'].tempo = tempo
-            if isinstance(track['next'], SetTimeSignature):
-                signature = track['next'].signature
-            else:
-                track['next'].signature = signature
-            try:
-                event = next(track['track'])
-            except StopIteration:
-                tracks.remove(track)
-            else:
-                track['duration'] += event.ticks
-                track['next'] = event
-    
     @property
     def format(self):
         return self._format
@@ -1128,27 +1033,16 @@ class Sequence(list):
         if self._format == None or len(self) == 0:
             self._format = value
         elif self._format == 0 and value == 1:
-            if len(self) != 1:
+            if self.tracks != 1:
                 raise MIDIError(
                         'Invalid format 0 sequence, contains {n} tracks.'\
                         .format(n=len(self)))
-            self._format = value
-            mixed = self.pop()
-            ticks = 0
-            tracks = list()
-            for i in range(2):
-                tracks.append([0, Track()])
-            for event in mixed:
-                ticks += event.ticks
+            self._format = 1
+            for event in self:
                 if isinstance(event, MetaEvent):
-                    track = 0
+                    event.track = 0
                 else:
-                    track = 1
-                event.ticks = ticks - tracks[track][0]
-                tracks[track][1].append(event)
-                tracks[track][0] = ticks
-            for track in tracks:
-                self.append(track[1])
+                    event.track = 1
         elif self._format != value:
             raise MIDIError(
                     'Cannot convert a format {0} sequence to format {1}.'\
@@ -1165,24 +1059,42 @@ class Sequence(list):
     @division.setter
     def division(self, value):
         self._division = value
-        for track in self:
-            track.division = self._division
+        for event in self:
+            event.division = self._division
 
     @division.deleter
     def division(self):
         del self._division
 
+    @property
+    def tracks(self):
+        def track(event):
+            return event.track
+        return track(max(self, key=track)) + 1
+
+    def track(self, track):
+        events = list()
+        for event in self:
+            if event.track == track:
+                events.append(event)
+        return events
+
     def __bytes__(self):
         array = bytearray()
         header = bytearray()
+        tracks = self.tracks
         header.extend(self.format.to_bytes(2, 'big'))
-        header.extend(len(self).to_bytes(2, 'big'))
+        header.extend(tracks.to_bytes(2, 'big'))
         header.extend(bytes(self.division))
         chunk = Chunk('MThd', header)
-        array.extend(bytes(chunk))
-        for track in self:
-            chunk = Chunk('MTrk', bytes(track))
-            array.extend(bytes(chunk))
+        array.extend(chunk.raw)
+        for track in range(tracks):
+            events = self.track(track)
+            events.append(EndTrack())
+            chunk = Chunk('MTrk')
+            for event in events:
+                chunk.extend(bytes(event))
+            array.extend(chunk.raw)
         return bytes(array)
 
 class Chunk(bytearray):
