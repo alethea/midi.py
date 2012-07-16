@@ -652,7 +652,6 @@ class Time(Delta):
                 name=type(self).__name__, bars=self.bars, beats=self.beats,
                 ticks=self.ticks)
 
-
 class Event(Delta):
     def __init__(self, **keywords):
         self.time = keywords.pop('time', Time())
@@ -998,12 +997,14 @@ class Sequence(list):
     def parse(source):
         if not isinstance(source, collections.Iterator):
             source = iter(source)
+
         sequence = Sequence()
         chunk = Chunk.parse(source, id='MThd')
         sequence.format = int.from_bytes(chunk[0:2], 'big')
         tracks = int.from_bytes(chunk[2:4], 'big')
         sequence._division = TimeDivision(chunk[4:6])
-        for track in range(tracks):
+        track = 0
+        for index in range(tracks):
             chunk = Chunk.parse(source)
             if chunk.id == 'MTrk':
                 data = iter(chunk)
@@ -1017,11 +1018,30 @@ class Sequence(list):
                     event.track = track
                     event.division = sequence._division
                     sequence.append(event)
+                track += 1
+
         def cumulative(event):
             return event.cumulative
         sequence.sort(key=cumulative)
+        tracks = sequence.tracks
+        times = list()
+        for track in range(tracks):
+            times.append(Time())
+        tempo = Tempo()
+        signature = TimeSignature()
         for event in sequence:
             del event.cumulative
+            if isinstance(event, SetTempo):
+                tempo = event.tempo
+            else:
+                event.tempo = tempo
+            if isinstance(event, SetTimeSignature):
+                signature = event.signature
+            else:
+                event.signature = signature
+            times[event.track] += event
+            event.time = times[event.track]
+
         return sequence
 
     @property
