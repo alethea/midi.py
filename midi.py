@@ -1,5 +1,21 @@
 #!/usr/bin/env python3
 
+"""
+An object oriented interface to MIDI sequences.
+
+Standard MIDI files store sequences as one or more tracks of MIDI events,
+separated by integer relative times. The midi module provides classes for
+parsing MIDI files and organizing MIDI events into a chronological sequence
+with absolute times accessible through 'bar|beat|tick' notation. This allows
+for easy modification of the sequence, and modified sequences can be exported
+back to MIDI files.
+
+Some MIDI events, such as SetTempo events, set a flag on future events, until
+another event resets it. The midi module uses a simple node map to track these
+flags. A setter event creates a flag object and subsequent event objects
+contain references to the flag object.
+"""
+
 import io
 import binascii
 import collections
@@ -7,19 +23,34 @@ import numbers
 import copy
 import math
 
+
 class Tempo:
-    def __init__(self, source=None, **keywords):
-        if source == None:
-            self.bpm = keywords.get('bpm', None)
-            self.mpqn = keywords.get('mpqn', 500000)
-        elif isinstance(source, numbers.Number):
-            self.bpm = source
+    """Stores musical tempo and provides unit conversions."""
+
+    def __init__(self, bpm=120, *, mpqn=None):
+        """
+        Create a new Tempo object.
+
+        If called without arguments, the tempo defaults to 120 BPM.
+        
+        Otherwise, if passed a single number, assume it is the tempo in beats
+        per minute. If passed a bytes object, assume it is the tempo 
+        specification from a MIDI file in microseconds per quarter note.
+
+        Beats per minute or microseconds per quarter note can be set
+        explicitly with the bpm and mpqn keywords.
+        """
+        if isinstance(bpm, numbers.Number):
+            self.bpm = bpm
         else:
-            self.mpqn = int.from_bytes(source, 'big')
+            self.mpqn = int.from_bytes(bpm, 'big')
+        if mpqn != None:
+            self.mpqn = mpqn
 
     @property
     def mpqn(self):
-        return round(60000000 // self.bpm)
+        """The tempo in microseconds per quarter note."""
+        return round(60000000 / self.bpm)
 
     @mpqn.setter
     def mpqn(self, value):
@@ -27,6 +58,7 @@ class Tempo:
 
     @property
     def bps(self):
+        """The tempo in beats per second."""
         return self.bpm / 60
 
     @bps.setter
@@ -40,21 +72,42 @@ class Tempo:
         return 'Tempo({bpm})'.format(bpm=self.bpm)
 
     def __bytes__(self):
+        """
+        Microseconds per quarter note in 3 bytes, for SetTempo events.
+        """
         return self.mpqn.to_bytes(3, 'big')
 
+
 class TimeDivision:
-    def __init__(self, source=None, **keywords):
+    """
+    Represents the time division field from a MIDI file header.
+    
+    MIDI files will either express the time division in pulses per quarter
+    note (PPQN) or pulses per second (PPS), based on SMPTE subframes. The mode
+    attribute will either be 'ppqn' or 'pps'. In PPQN mode, the ppqn attribute
+    will be defined. In PPS mode the frames, subframes, and pps attributes
+    will be defined.
+    """
+
+    def __init__(self, ppqn=None, *, frames=None, subframes=None):
+        """
+        Creates a new TimeDivision object.
+
+        If passed no arguments, create an empty TimeDivision object. If passed
+        one numeric argument, create a PPQN TimeDivision with the specified
+        PPQN. Otherwise, if keywords frames and subframes are specified,
+        create a PPS TimeDivision.
+        """
         self.mode = 'ppqn'
         self.pps = None
         self.ppqn = None
-        if source == None:
-            self.ppqn = keywords.get('ppqn', None)
-            self.frames = keywords.get('frames', None)
-            self.subframes = keywords.get('subframes', None)
-        elif isinstance(source, numbers.Number):
-            self.ppqn = source
+        if ppqn == None:
+            self.frames = frames
+            self.subframes = subframes
+        elif isinstance(ppqn, numbers.Number):
+            self.ppqn = ppqn
         else:
-            bits = int.from_bytes(source, 'big')
+            bits = int.from_bytes(ppqn, 'big')
             if bits & 0x8000:
                 self.frames = (bits & 0x7f00) >> 8
                 if self.frames == 29:
@@ -66,7 +119,8 @@ class TimeDivision:
 
     @property
     def frames(self):
-        if hasattr(self, '_frames'):
+        """Return SMPTE frames per second in PPS mode"""
+        if mode != 'ppqn' and hasattr(self, '_frames'):
             if self._frames == 29:
                 return 29.97
             else:
@@ -91,6 +145,7 @@ class TimeDivision:
 
     @property
     def subframes(self):
+        """Return number of subframes per SMPTE frame in PPS mode."""
         if hasattr(self, '_subframes'):
             return self._subframes
         else:
@@ -122,49 +177,93 @@ class TimeDivision:
                     .format(frames=self.frames, subframes=self.subframes))
 
     def __bytes__(self):
+        """A 2 byte integer, suitable for MIDI file headers."""
         if self.mode == 'ppqn':
             return self.ppqn.to_bytes(2, 'big')
         else:
             value = 0x8000 | (self._frames << 8) | self._subframes
             return value.to_bytes(2, 'big')
 
+
 class TimeSignature:
-    def __init__(self, numerator=4, denominator=4, metronome=24,
-            quarter=8):
+    """
+    Represents a MIDI time signature.
+    
+    The numerator and denominator of a time signature, e.g.: 4/4, are
+    available through the numerator and denominator attributes. 
+    
+    MIDI time signatures also store metronome information, accessible as
+    fractional ticks per beat through the metronome attribute.
+
+    Lastly, MIDI files also store the relationship between 32nd notes and MIDI
+    clock ticks to synchronize with a synthesizer. This is not related to the
+    file's clock or time division, and is usually 8, since there are usually
+    24 clock ticks per quarter note, so 1/32 * 8 = 1/4. This number is
+    available through the clock attribute.
+    """
+
+    def __init__(self, numerator=4, denominator=4, metronome=1.0, clock=8):
+        """
+        Create a new TimeSignature object.
+
+        Arguments can be positional or keywords: numerator, denominator, 
+        metronome, clock. If not specified defaults to 4, 4, 1.0, 8.
+
+        If given a single bytes-like object, assume it's from the body of a
+        SetTimeSignature event and parse it.
+        """
         if isinstance(numerator, collections.Iterable):
             source = numerator
             self.numerator = source[0]
             self.denominator = int(2 ** source[1])
-            self.metronome = source[2]
-            self.quarter = source[3]
+            self.metronome = source[2] / 24
+            self.clock = source[3]
         else:
-            if numerator == None:
-                self.numerator = 4
-            else:
-                self.numerator = numerator
+            self.numerator = numerator
             self.denominator = denominator
             self.metronome = metronome
-            self.quarter = quarter
+            self.clock = clock
 
     def __str__(self):
         return '{numerator}/{denominator}'.format(
                 numerator=self.numerator, denominator=self.denominator)
 
     def __repr__(self):
-        return ('TimeSignature({num}, {denom}, {metro}, {quarter})'
+        return ('TimeSignature({num}, {denom}, {metro}, {clock})'
                 .format(num=self.numerator, denom=self.denominator,
-                        metro=self.metronome, quarter=self.quarter))
+                        metro=self.metronome, clock=self.clock))
 
     def __bytes__(self):
+        """4 bytes, suitable for the body of a SetTimeSignature event."""
         array = bytearray()
         array.append(self.numerator)
-        array.append(int(math.log(self.denominator, 2)))
-        array.append(self.metronome)
-        array.append(self.quarter)
+        array.append(round(math.log(self.denominator, 2)))
+        array.append(round(self.metronome * 24))
+        array.append(self.clock)
         return bytes(array)
 
+
 class Program:
+    """
+    Represents a MIDI program.
+
+    MIDI stores instrument information as a number 1-128. There is a standard
+    set of instruments, but synthesizers may implement their own set. The
+    descriptive name of the instrument, e.g.: 'Acoustic Grand Piano', is 
+    accessible from the desc attribute. A unique string describing the 
+    instrument, e.g.: 'AcousticGrandPiano', is accessible by the name
+    attribute. Lists of valid strings are available through the names and
+    descs attributes.
+    """
+
     def __init__(self, source=None):
+        """
+        Create a new Program object.
+
+        Can be initialized from an integer program number, a program byte from
+        a MIDI file, a name string (in any capitalization scheme), or a 
+        description string.
+        """
         if source == None:
             self.number = 1
         elif isinstance(source, numbers.Number):
@@ -176,11 +275,12 @@ class Program:
         else:
             self.number = int.from_bytes(source, 'big') + 1
         if self.number == None or self.number < 1 or self.number > 128:
-            raise MIDIError('MIDI Prgram \'{source}\' is undefined.'.format(
+            raise MIDIError('MIDI Program \'{source}\' is undefined.'.format(
                 source=source))
 
     @property
     def name(self):
+        """The string identifying the program."""
         return Program._names.get(self.number, None)
 
     @name.setter
@@ -189,6 +289,7 @@ class Program:
 
     @property
     def desc(self):
+        """The descriptive name of the program."""
         return Program._descs.get(self.number, None)
 
     @desc.setter
@@ -202,7 +303,9 @@ class Program:
         return 'Program({name!r})'.format(name=self.name)
 
     def __bytes__(self):
+        """Single byte integer of the program number."""
         return (self.number - 1).to_bytes(1, 'big')
+
 
 class Delta:
     def __init__(self, source=None, division=None, tempo=None, 
@@ -402,6 +505,7 @@ class Delta:
             return bytes(1)
         else:
             return _var_int_bytes(ticks)
+
 
 class Time(Delta):
     def __init__(self, source=None, **keywords):
@@ -652,14 +756,37 @@ class Time(Delta):
                 name=type(self).__name__, bars=self.bars, beats=self.beats,
                 ticks=self.ticks)
 
+
 class Event(Delta):
+    """Base class for MIDI events."""
+
     def __init__(self, **keywords):
+        """
+        Create a new Event object.
+
+        Since Event inherits Delta for storing its time information, any
+        keyword arguments Delta supports can be passed to the constructor,
+        in addition to the time and track keywords.
+        """
         self.time = keywords.pop('time', Time())
         self.track = keywords.pop('track', None)
         super().__init__(**keywords)
 
+    track = None
+    time = None
+
     @staticmethod
     def parse(source):
+        """
+        Create a new Event object of the appropriate type from a bytes.
+
+        This is the primary method from creating Event objects from a Chunk.
+        It will raise a MIDIError if it encounters an unknown or malformed
+        event.
+
+        A common method of calling parse is to create an iterator from a Chunk
+        and call parse repeatedly.
+        """
         if not isinstance(source, collections.Iterator):
             source = iter(source)
         ticks = _var_int_parse(source)
@@ -676,13 +803,29 @@ class Event(Delta):
     def __str__(self):
         return type(self).__name__
 
+
 class ChannelEvent(Event):
+    """
+    Base class for channel events.
+
+    Channel events make up the bulk of a MIDI file. Each track has 16 channels
+    available for audio events. Channel events contain a track nibble in
+    their status byte that dictates what channel the event acts on.
+    """
+
     def __init__(self, **keywords):
+        """
+        Create a new ChannelEvent object.
+
+        In addition to the keywords inherited from Event, ChannelEvents also
+        accept the channel keyword.
+        """
         self.channel = keywords.pop('channel', None)
         super().__init__(**keywords)
     
     @classmethod
     def _parse(cls, source=None, status=None):
+        """Delegate parser method. Called by Event.parse."""
         if cls == ChannelEvent:
             channel = status & 0x0f
             type = status & 0xf0
@@ -698,10 +841,12 @@ class ChannelEvent(Event):
 
     @property
     def type(self):
+        """Get the type number 0x80-0x30. Immutable."""
         return ChannelEvent._types[type(self)]
 
     @property
     def status(self):
+        """Get the status byte, type | channel. Immutable."""
         return self.type | self.channel
 
     def __repr__(self):
@@ -714,23 +859,44 @@ class ChannelEvent(Event):
                     name=type(self).__name__, parameters=tuple(parameters))
 
     def __bytes__(self):
+        """Bytes, including delta time, for writing to a MIDI file."""
         array = bytearray()
         array.extend(Delta.__bytes__(self))
         array.append(self.status)
         array.extend(self._parameters())
         return bytes(array)
 
+
 class NoteOff(ChannelEvent):
+    """
+    Indicates a key release.
+    
+    Available attributes are note and velocity.
+    """
+
     def __init__(self, note=None, velocity=None, **keywords):
+        """
+        Create a NoteOff object. Accepts note and velocity arguments.
+        """
         super().__init__(**keywords)
         self.note = note
         self.velocity = velocity
 
     def _parameters(self):
         return (self.note, self.velocity)
+
 
 class NoteOn(ChannelEvent):
+    """
+    Indicates a key press.
+    
+    Available attributes are note and velocity.
+    """
+
     def __init__(self, note=None, velocity=None, **keywords):
+        """
+        Create a NoteOn object. Accepts note and velocity arguments.
+        """
         super().__init__(**keywords)
         self.note = note
         self.velocity = velocity
@@ -738,17 +904,37 @@ class NoteOn(ChannelEvent):
     def _parameters(self):
         return (self.note, self.velocity)
 
+
 class NoteAftertouch(ChannelEvent):
-    def __init__(self, note=None, value=None, **keywords):
+    """
+    Indicates a change in pressure on a pressed key.
+    
+    Available attributes are note and amount.
+    """
+
+    def __init__(self, note=None, amount=None, **keywords):
+        """
+        Create a NoteAftertouch object. Accepts note and amount arguments.
+        """
         super().__init__(**keywords)
         self.note = note
-        self.value = value
+        self.amount = amount
 
     def _parameters(self):
-        return (self.note, self.value)
+        return (self.note, self.amount)
+
 
 class Controller(ChannelEvent):
+    """
+    Indicates a change in a controller on a channel.
+
+    Available attributes are controller and value.
+    """
+
     def __init__(self, controller=None, value=None, **keywords):
+        """
+        Create a Controller object. Accepts controller and value arguments.
+        """
         super().__init__(**keywords)
         self.controller = controller
         self.value = value
@@ -756,8 +942,21 @@ class Controller(ChannelEvent):
     def _parameters(self):
         return (self.controller, self.value)
     
+
 class ProgramChange(ChannelEvent):
+    """
+    Indicates a change in the program (instrument) active on a channel.
+
+    The associated Program object can be accessed through the program
+    attribute.
+    """
+
     def __init__(self, program=None, **keywords):
+        """
+        Create a ProgramChange object. 
+
+        Accepts a program number, a Program object, or bytes as an argument.
+        """
         super().__init__(**keywords)
         if isinstance(program, Program) or program == None:
             self.program = program
@@ -768,6 +967,7 @@ class ProgramChange(ChannelEvent):
 
     @classmethod
     def _parse(cls, source):
+        """Delegate parser method. Called by ChannelEvent._parse."""
         return cls(next(source))
 
     def _parameters(self):
@@ -779,34 +979,67 @@ class ProgramChange(ChannelEvent):
 
 
 class ChannelAftertouch(ChannelEvent):
+    """
+    Indicates a change in pressure on all pressed keys in a channel.
+
+    The pressure is accessible by the amount attribute.
+    """
+
     def __init__(self, amount=None, **keywords):
+        """Create a ChannelAftertouch object. Accepts an amount argument."""
         super().__init__(**keywords)
         self.amount = amount
 
     @classmethod
     def _parse(cls, source):
+        """Delegate parser method. Called by ChannelEvent._parse."""
         return cls(next(source))
 
     def _parameters(self):
         return (self.amount,)
 
+
 class PitchBend(ChannelEvent):
+    """
+    Indicates a shift in pitch of a channel.
+
+    The value parameter is a floating point number between -1 and 1.
+    """
+
     def __init__(self, value=None, **keywords):
+        """Create a PitchBend object. Accepts a value argument."""
         super().__init__(**keywords)
         self.value = value
 
     @classmethod
     def _parse(cls, source):
+        """Delegate parser method. Called by ChannelEvent._parse."""
         value = (next(source) & 0x7f) | ((next(source) & 0x7f) << 7)
+        value = (value / 0x2000) - 1
         return cls(value)
 
     def _parameters(self):
-        return(self.value & 0x7f, (self.value >> 7) & 0x7f )
+        value = round((self.vale + 1) * 0x2000)
+        return (value & 0x7f, (value >> 7) & 0x7f)
+
+    def __repr__(self):
+        return '{type}({value})'.format(type=type(self).__name__, 
+                vale=self.value)
+
 
 class MetaEvent(Event):
+    """
+    Base class for meta events.
+
+    Meta events contain data not sent to a synthesizer, such as text
+    descriptions or timing information for the controlling computer. They may
+    occur at any point in a file, but are mostly on track 1 of common format 1
+    files.
+    """
 
     @classmethod
     def _parse(cls, source):
+        """Delegate parser method. Called by Event.parse."""
         if cls == MetaEvent:
             type = next(source)
             return cls._events[type]._parse(source)
@@ -821,6 +1054,7 @@ class MetaEvent(Event):
 
     @property
     def type(self):
+        """Get the meta event's type byte."""
         return MetaEvent._types[type(self)]
 
     def __repr__(self):
@@ -828,6 +1062,7 @@ class MetaEvent(Event):
                 name=type(self).__name__, data=self._bytes())
 
     def __bytes__(self):
+        """Bytes, including delta time, for writing to a MIDI file."""
         array = bytearray()
         data = self._bytes()
         array.extend(Delta.__bytes__(self))
@@ -837,126 +1072,221 @@ class MetaEvent(Event):
         array.extend(data)
         return bytes(array)
 
+
 class TextMetaEvent(MetaEvent):
-    def __init__(self, source=None, **keywords):
+    """
+    Base class for meta events with a text payload.
+
+    The text is available through the text attribute. Characters should not
+    exceed the ASCII range.
+    """
+
+    def __init__(self, text=None, **keywords):
+        """Create a TextMetaEvent from a string argument, if present."""
         super().__init__(**keywords)
         try:
-            self.text = str(source, 'ascii')
+            self.text = str(text, 'ascii')
         except TypeError:
-            self.text = source
+            self.text = text
 
     def __repr__(self):
         return '{name}({text!r})'.format(
                 name=type(self).__name__, text=self.text)
 
     def _bytes(self):
+        """Delegate bytes method, called by MetaEvent.__bytes__."""
         return self.text.encode('ascii')
 
+
 class SequenceNumber(MetaEvent):
-    def __init__(self, source=None, **keywords):
+    """
+    The pattern number of a format 2 track or a format 0 or 1 sequence.
+    """
+
+    def __init__(self, number=None, **keywords):
+        """Create a SequenceNumber from a numeric argument or bytes."""
         super().__init__(**keywords)
         try:
-            self.number = int.from_bytes(source, 'big')
+            self.number = int.from_bytes(number, 'big')
         except TypeError:
-            self.number = source
+            self.number = number
 
     def __repr__(self):
         return '{name}({number})'.format(
                 name=type(self).__name__, number=self.number)
 
     def _bytes(self):
+        """Delegate bytes method, called by MetaEvent.__bytes__."""
         return self.number.to_bytes(2, 'big')
 
+
 class Text(TextMetaEvent):
-    pass
+    """Arbitrary text for comments or description."""
+
 
 class Copyright(TextMetaEvent):
-    pass
+    """Stores a copyright notice. Can include '©' (0xa9)."""
+
 
 class Name(TextMetaEvent):
-    pass
+    """Defines sequence name or a track name."""
 
-class Instrument(TextMetaEvent):
-    pass
+
+class ProgramName(TextMetaEvent):
+    """A descriptive string of the instrument being used."""
+
 
 class Lyrics(TextMetaEvent):
-    pass
+    """Defines lyrics for sheet music or a karaoke system."""
+
 
 class Marker(TextMetaEvent):
-    pass
+    """Marks a significant point in the sequence."""
+
 
 class CuePoint(TextMetaEvent):
-    pass
+    """Marks the start of a new sound or action."""
+
 
 class ChannelPrefix(MetaEvent):
-    def __init__(self, source=None, **keywords):
+    """
+    Indicate that the following meta events affect a specific channel.
+    
+    Used primarily with ProgramName meta events. The channel is available by
+    the channel attribute.
+    """
+
+    def __init__(self, channel=None, **keywords):
+        """
+        Create a ChannelPrefix from an optional number or bytes argument.
+        """
         super().__init__(**keywords)
         try:
-            self.channel = int.from_bytes(source, 'big')
+            self.channel = int.from_bytes(channel, 'big')
         except TypeError:
-            self.channel = source
+            self.channel = channel
 
     def __repr__(self):
         return '{name}({channel})'.format(
                 name=type(self).__name__, channel=self.channel)
 
     def _bytes(self):
+        """Delegate bytes method, called by MetaEvent.__bytes__."""
         return self.channel.to_bytes(1, 'big')
 
+
 class EndTrack(MetaEvent):
+    """
+    Indicates the end of a track.
+    
+    Sequence automatically tracks EndTrack events, so most applications will
+    never need to interact with them.
+    """
+
     def __init__(self, source=None, **keywords):
+        """Create an EndTrack object."""
         super().__init__(**keywords)
 
     def __repr__(self):
         return '{name}()'.format(name=type(self).__name__)
 
     def _bytes(self):
+        """Delegate bytes method, called by MetaEvent.__bytes__."""
         return bytes()
 
+
 class SetTempo(MetaEvent):
-    def __init__(self, source=None, **keywords):
+    """
+    Sets the tempo for the sequence until the next SetTempo event.
+
+    The associated Tempo object is accessible from the tempo attribute.
+    """
+
+    def __init__(self, tempo=None, **keywords):
+        """
+        Create a SetTempo object.
+
+        Accepts an optional number (in MPQN), bytes, or a Tempo object
+        argument.
+        """
         super().__init__(**keywords)
         try:
-            mpqn = int.from_bytes(source, 'big')
+            mpqn = int.from_bytes(tempo, 'big')
         except TypeError:
-            mpqn = source
+            mpqn = tempo
         if isinstance(mpqn, numbers.Number):
             self.tempo = Tempo(mpqn=mpqn)
         else:
-            self.tempo = source
+            self.tempo = tempo
 
     def __repr__(self):
         return '{name}({tempo!r})'.format(
                 name=type(self).__name__, tempo=self.tempo)
 
     def _bytes(self):
+        """Delegate bytes method, called by MetaEvent.__bytes__."""
         return self.tempo.mpqn.to_bytes(3, 'big')
 
+
 class SMPTEOffset(MetaEvent):
-    def __init__(self, source=None, **keywords):
+    """
+    Indicates an absolute time offset at the start of a track.
+
+    Internal parsing of event parameters is not currently implemented, but
+    SMPTEOffsets can be used in a pass-through fashion.
+    """
+
+    def __init__(self, data=None, **keywords):
+        """Create a SMPTEOffset. Accepts a bytes argument."""
         super().__init__(**keywords)
-        self.data = source
+        self.data = data
 
     def _bytes(self):
+        """Delegate bytes method, called by MetaEvent.__bytes__."""
         return self.data
 
+
 class SetTimeSignature(MetaEvent):
-    def __init__(self, source=None, **keywords):
+    """
+    Sets the time signature for the sequence until the next SetTimeSignature.
+
+    The associated TimeSignature object is accessible from the signature
+    attribute.
+    """
+
+    def __init__(self, signature=None, **keywords):
+        """
+        Create a SetTempo object.
+
+        Accepts an optional TimeSignature argument or any object accepted by
+        TimeSignature.__init__.
+        """
         super().__init__(**keywords)
-        if isinstance(source, TimeSignature):
-            self.signature = source
+        if isinstance(signatue, TimeSignature):
+            self.signature = signature
         else:
-            self.signature = TimeSignature(source, **keywords)
+            self.signature = TimeSignature(signature, **keywords)
 
     def __repr__(self):
         return '{name}({signature!r})'.format(
                 name=type(self).__name__, signature=self.signature)
 
     def _bytes(self):
+        """Delegate bytes method, called by MetaEvent.__bytes__."""
         return bytes(self.signature)
 
+
 class SetKeySignature(MetaEvent):
+    """
+    Sets the key signature for the track until the next SetKeySignature event.
+
+    The key and scale can be accessed by the key and scale attributes.
+    """
+
     def __init__(self, key=None, scale=None, **keywords):
+        """
+        Create a SetKeySignature from bytes or number key and scale arguments.
+        """
         super().__init__(**keywords)
         if isinstance(key, collections.Iterable):
             self.key = key[0]
@@ -972,22 +1302,60 @@ class SetKeySignature(MetaEvent):
                 name=type(self).__name__, key=self.key, scale=self.scale)
 
     def _bytes(self):
+        """Delegate bytes method, called by MetaEvent.__bytes__."""
         return (self.key.to_bytes(1, 'big', signed=True) +
                 self.scale.to_bytes(1, 'big'))
 
+
 class ProprietaryEvent(MetaEvent):
-    def __init__(self, source=None, **keywords):
+    """
+    A manufacturer-specific meta event.
+
+    The binary payload is accessible through the data attribute.
+    """
+
+    def __init__(self, data=None, **keywords):
+        """Create a ProprietaryEvent from an optional bytes argument."""
         super().__init__(**keywords)
-        self.data = source
+        self.data = data
 
     def _bytes(self):
+        """Delegate bytes method, called by MetaEvent.__bytes__."""
         return self.data
 
+
 class SysExEvent(Event):
-    pass
+    """
+    A system exclusive event is a manufacturer-specific event.
+
+    Currently unsupported. Attempting to parse SysExEvent will raise a
+    MIDIError.
+    """
+
+    @classmethod
+    def _parse(cls, source):
+        """Delegate parser method. Called by Event.parse."""
+        raise MIDIError('System exclusive events are unsupported.')
+
 
 class Sequence(list):
-    def __init__(self, events=list(), format=None, division=None):
+    """
+    Represents a MIDI sequence as a chronological list of events.
+    
+    Instead of using the internal organization of a MIDI file as a set of
+    tracks with delta times in between events, the Sequence object organizes
+    events in chronological order, making the track an attribute of the event
+    objects.
+    """
+
+    def __init__(self, events=list(), *, format=None, division=None):
+        """
+        Create a Sequence.
+
+        Accepts a list of events or another sequence as an optional argument.
+        The format and time division of a sequence can be specified with the
+        optional format and division keywords.
+        """
         super().__init__(events)
         self._format = None
         self.format = format
@@ -995,6 +1363,11 @@ class Sequence(list):
 
     @staticmethod
     def parse(source):
+        """
+        Create a new Sequence object from a file or bytes.
+
+        Corrupt, truncated, or malformed sources will raise a MIDIError.
+        """
         if not isinstance(source, collections.Iterator):
             source = iter(source)
 
@@ -1050,6 +1423,13 @@ class Sequence(list):
 
     @property
     def format(self):
+        """
+        Access the format of the sequence.
+
+        Setting the format of a sequence will attempt to convert it. If the 
+        conversion fails, it will raise a MIDIError. Currently, the only
+        supported conversion is 0 to 1.
+        """
         return self._format
 
     @format.setter
@@ -1078,6 +1458,12 @@ class Sequence(list):
 
     @property
     def division(self):
+        """
+        Access the time division of the sequence.
+        
+        Setting the time division of a sequence will update all events to
+        reference the new time division.
+        """
         return self._division
 
     @division.setter
@@ -1092,11 +1478,23 @@ class Sequence(list):
 
     @property
     def tracks(self):
+        """
+        Get the number of tracks in the sequence.
+
+        Note: May be slow, since finding the number of tracks requires
+        iterating through the entire sequence.
+        """
         def track(event):
             return event.track
         return track(max(self, key=track)) + 1
 
     def track(self, track):
+        """
+        Get a list of all the events associated with a track number.
+
+        If the track number is not present in the sequence, returns an empty
+        list.
+        """
         events = list()
         for event in self:
             if event.track == track:
@@ -1104,25 +1502,40 @@ class Sequence(list):
         return events
 
     def __bytes__(self):
+        """Bytes for writing to a MIDI file."""
         array = bytearray()
         header = bytearray()
         tracks = self.tracks
         header.extend(self.format.to_bytes(2, 'big'))
         header.extend(tracks.to_bytes(2, 'big'))
         header.extend(bytes(self.division))
-        chunk = Chunk('MThd', header)
+        chunk = Chunk(header, id='MThd')
         array.extend(chunk.raw)
         for track in range(tracks):
             events = self.track(track)
             events.append(EndTrack())
-            chunk = Chunk('MTrk')
+            chunk = Chunk(id='MTrk')
             for event in events:
                 chunk.extend(bytes(event))
             array.extend(chunk.raw)
         return bytes(array)
 
+
 class Chunk(bytearray):
-    def __init__(self, id=None, data=bytearray()):
+    """
+    Represents a chunk of a MIDI file, accessible as a bytearray.
+
+    MIDI files group data into chunks. Generally a file consists of one header
+    chunk followed by one or more track chunks.
+    """
+
+    def __init__(self, data=bytearray(), *, id=None):
+        """
+        Create a Chunk object.
+        
+        Can be initialized from a bytes object, and the chunk ID can be 
+        specified with the optional id keyword.
+        """
         super().__init__(data)
         self.id = id
 
@@ -1175,6 +1588,7 @@ class Chunk(bytearray):
 
     @property
     def raw(self):
+        """Access the raw data, including ID and length bytes."""
         value = bytearray(self.id, 'ascii')
         value.extend(len(self).to_bytes(4, 'big'))
         value.extend(self)
@@ -1186,16 +1600,20 @@ class Chunk(bytearray):
         self[:] = value[8:]
 
     def __bytes__(self):
+        """Bytes for writing to a MIDI file."""
         return bytes(self.raw)
 
     def __str__(self):
+        """A hex string of the chunk."""
         return str(binascii.hexlify(self.raw), 'ascii')
 
     def __repr__(self):
         return 'Chunk({id}, {data})'.format(id=repr(self.id), 
                 data=repr(bytes(self)[8:]))
 
+
 def _var_int_parse(source):
+    """Converts the bytes of a MIDI variable length integer to an int."""
     value = 0
     if not isinstance(source, collections.Iterator):
         source = iter(source)
@@ -1208,7 +1626,9 @@ def _var_int_parse(source):
         raise MIDIError('Incomplete variable length integer.')
     return value
 
+
 def _var_int_bytes(value):
+    """Convent an int to the bytes of a MIDI variable length integer."""
     array = bytearray()
     for i in range(4):
         array.append((value & 0x7f) | 0x80)
@@ -1221,8 +1641,15 @@ def _var_int_bytes(value):
     array = reversed(array)
     return bytes(array)
             
+
 class MIDIError(Exception):
-    pass
+    """
+    An exception raised when parsing fails or at an illegal operation.
+    
+    MIDIError is a thin wrapper for Exception. A MIDIError raised by the midi
+    module will contain one argument: a string explaining what went wrong.
+    """
+
 
 ChannelEvent._events = {
         0x80: NoteOff,
@@ -1240,7 +1667,7 @@ MetaEvent._events = {
         0x01: Text,
         0x02: Copyright,
         0x03: Name,
-        0x04: Instrument,
+        0x04: ProgramName,
         0x05: Lyrics,
         0x06: Marker,
         0x07: CuePoint,
@@ -1390,6 +1817,7 @@ for key, value in Program._descs.items():
 Program._desc_numbers = {value: key for key, value in Program._descs.items()}
 Program._lower_numbers = {
         value.lower(): key for key, value in Program._names.items()}
+del key, value
 
 Program.names = Program._names.values()
 Program.descs = Program._descs.values()
