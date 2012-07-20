@@ -307,116 +307,6 @@ class Program:
         return (self.number - 1).to_bytes(1, 'big')
 
 
-class TimeNode:
-    def __init__(self, *, note=0.0, bar=1, beat=1, tick=1, triple=None,
-            cumulative=0, signature=None, tempo=None):
-        self.note = note
-        self.bar = bar
-        self.beat = beat
-        self.tick = tick
-        if triple != None:
-            self.triple = triple
-        self.cumulative = cumulative
-        self.signature = signature
-        self.tempo = tempo
-        self.specification = None
-
-    @property
-    def triple(self):
-        return (self.bar, self.beat, self.tick)
-
-    @triple.setter
-    def triple(self, value):
-        self.bar, self.beat, self.tick = value
-
-    @property
-    def ppn(self):
-        if self.specification.division.mode == 'ppqn':
-            return self.specification.division.ppqn * 4
-        else:
-            return self.specification.division.pps / self.tempo.bps * 4
-
-
-class TimeSpecification(list):
-    def __init__(self, nodes=list(), *, division=None):
-        for node in nodes:
-            self.append(node)
-        self.division = division
-
-    def triple(self, iterable):
-        bar, beat, tick = iterable
-        for node in reversed(self):
-            if node.bar < bar:
-                return node
-            elif node.bar == bar:
-                if node.beat < beat:
-                    return node
-                elif node.beat == beat:
-                    if node.tick <= tick:
-                        return node
-        return None
-
-    @property
-    def division(self):
-        return self._division
-
-    @division.setter
-    def division(self, value):
-        self._division = value
-        if self._division != None:
-            note = 0.0
-            cumulative = 0
-            for node in self:
-                node.cumulative = cumulative + (node.note - note) * node.ppn
-                cumulative = node.cumulative
-                note = node.note
-
-    def time(self, time_object):
-        return self._lookup(time_object.note, 'note')
-
-    def note(self, value):
-        return self._lookup(value, 'note')
-    
-    def cumulative(self, value):
-        return self._lookup(value, 'cumulative')
-    
-    def _lookup(self, value, key):
-        for node in reversed(self):
-            if node.__dict__[key] <= value:
-                return node
-        return None
-
-    def events(self, *, track=None):
-        tempo = None
-        signature = None
-        event_list = list()
-        for node in self:
-            if node.tempo != tempo:
-                tempo = node.tempo
-                event = SetTempo(tempo, track=track)
-                event.time.specification = self
-                event.time.note = node.note
-                event_list.append(event)
-            if node.signature != signature:
-                signature = node.signature
-                event = SetTimeSignature(signature, track=track)
-                event.time.specification = self
-                event.time.note = node.note
-                event_list.append(event)
-        return event_list
-
-    def append(self, node):
-        if not isinstance(node, TimeNode):
-            raise TypeError('cannot append {type!r} to \'TimeSpecification\''
-                    .format(type=type(node).__name__))
-        node.specification = self
-        super().append(node)
-
-    def extend(self, nodes):
-        for node in nodes:
-            self.append(node)
-
-
 class Time:
     def __init__(self, note=0.0, *, specification=None):
         self._node = None
@@ -553,6 +443,139 @@ class Time:
                 beat=self.beat, tick=self.tick)
         self._node = None
         return string
+
+class TimeNode:
+    def __init__(self, time=None, *, note=0.0, bar=1, beat=1, tick=1,
+            triple=None, cumulative=0, signature=None, tempo=None):
+        self.specification = None
+        if isinstance(time, Time):
+            self.note = time.note
+            if isinstance(signature, TimeSignature):
+                self.signature = signature
+            else:
+                self.signature = time.node.signature
+            if isinstance(tempo, Tempo):
+                self.tempo = tempo
+            else:
+                self.tempo = time.node.tempo
+            self.triple = time.triple
+            self.cumulative = time.cumulative
+        else:
+            self.note = note
+            self.signature = signature
+            self.tempo = tempo
+            self.bar = bar
+            self.beat = beat
+            self.tick = tick
+            if triple != None:
+                self.triple = triple
+            self.cumulative = cumulative
+
+    @property
+    def triple(self):
+        return (self.bar, self.beat, self.tick)
+
+    @triple.setter
+    def triple(self, value):
+        self.bar, self.beat, self.tick = value
+
+    @property
+    def ppn(self):
+        if self.specification.division.mode == 'ppqn':
+            return self.specification.division.ppqn * 4
+        else:
+            return self.specification.division.pps / self.tempo.bps * 4
+
+
+class TimeSpecification(list):
+    def __init__(self, nodes=list(), *, division=None):
+        for node in nodes:
+            self.append(node)
+        self.division = division
+
+    def triple(self, iterable):
+        bar, beat, tick = iterable
+        for node in reversed(self):
+            if node.bar < bar:
+                return node
+            elif node.bar == bar:
+                if node.beat < beat:
+                    return node
+                elif node.beat == beat:
+                    if node.tick <= tick:
+                        return node
+        return None
+
+    @property
+    def division(self):
+        return self._division
+
+    @division.setter
+    def division(self, value):
+        self._division = value
+        if self._division != None:
+            note = 0.0
+            cumulative = 0
+            for node in self:
+                node.cumulative = cumulative + (node.note - note) * node.ppn
+                cumulative = node.cumulative
+                note = node.note
+
+    def time(self, time_object):
+        return self._lookup(time_object.note, 'note')
+
+    def note(self, value):
+        return self._lookup(value, 'note')
+    
+    def cumulative(self, value):
+        return self._lookup(value, 'cumulative')
+    
+    def _lookup(self, value, key):
+        for node in reversed(self):
+            if node.__dict__[key] <= value:
+                return node
+        return None
+
+    def events(self, *, track=None):
+        self.sort()
+        tempo = None
+        signature = None
+        event_list = list()
+        for node in self:
+            if node.tempo != tempo:
+                tempo = node.tempo
+                event = SetTempo(tempo, track=track)
+                event.time.specification = self
+                event.time.note = node.note
+                event_list.append(event)
+            if node.signature != signature:
+                signature = node.signature
+                event = SetTimeSignature(signature, track=track)
+                event.time.specification = self
+                event.time.note = node.note
+                event_list.append(event)
+        return event_list
+
+    def append(self, object):
+        if not isinstance(object, (Time, TimeNode)):
+            raise TypeError('cannot append {type!r} to \'TimeSpecification\''
+                    .format(type=type(object).__name__))
+        node = object
+        if not isinstance(object, TimeNode):
+            node = TimeNode(object)
+        node.specification = self
+        super().append(node)
+
+    def extend(self, nodes):
+        for node in nodes:
+            self.append(node)
+    
+    def sort(self, *, key=None, reverse=False):
+        if key == None:
+            def note(node):
+                return node.note
+            key = note
+        super().sort(key=key, reverse=reverse)
 
 
 class Event:
