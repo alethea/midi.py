@@ -308,25 +308,40 @@ class Program:
 
 
 class TimeSpecificationNode:
-    def __init__(self):
-        self.note = 0.0
-        self.bar = 1
-        self.beat = 1
-        self.tick = 1
-        self.cumulative = 0
-        self.signature = TimeSignature()
-        self.division = TimeDivision(256)
-        self.tempo = Tempo(84)
+    def __init__(self, *, note=0.0, bar=1, beat=1, tick=1, triple=None,
+            cumulative=0, signature=None, tempo=None):
+        self.note = note
+        self.bar = bar
+        self.beat = beat
+        self.tick = tick
+        if triple != None:
+            self.triple = triple
+        self.cumulative = cumulative
+        self.signature = signature
+        self.tempo = tempo
+        self.specification = None
+
+    @property
+    def triple(self):
+        return (self.bar, self.beat, self.tick)
+
+    @triple.setter
+    def triple(self, value):
+        self.bar, self.beat, self.tick = value
 
     @property
     def ppn(self):
-        if self.division.mode == 'ppqn':
-            return self.division.ppqn * 4
+        if self.specification.division.mode == 'ppqn':
+            return self.specification.division.ppqn * 4
         else:
-            return self.division.pps / self.tempo.bps * 4
+            return self.specification.division.pps / self.tempo.bps * 4
 
 
 class TimeSpecification(list):
+    def __init__(self, nodes=list(), *, division=None):
+        for node in nodes:
+            self.append(node)
+        self.division = division
 
     def triple(self, iterable):
         bar, beat, tick = iterable
@@ -355,6 +370,36 @@ class TimeSpecification(list):
             if node.__dict__[key] <= value:
                 return node
         return None
+
+    def events(self, *, track=None):
+        tempo = None
+        signature = None
+        event_list = list()
+        for node in self:
+            if node.tempo != tempo:
+                tempo = node.tempo
+                event = SetTempo(tempo, track=track)
+                event.time.specification = self
+                event.time.note = node.note
+                event_list.append(event)
+            if node.signature != signature:
+                signature = node.signature
+                event = SetTimeSignature(signature, track=track)
+                event.time.specification = self
+                event.time.note = node.note
+                event_list.append(event)
+        return event_list
+
+    def append(self, node):
+        if not isinstance(node, TimeSpecificationNode):
+            raise TypeError('cannot append {type!r} to \'TimeSpecification\''
+                    .format(type=type(node).__name__))
+        node.specification = self
+        super().append(node)
+
+    def extend(self, nodes):
+        for node in nodes:
+            self.append(node)
 
 
 class TimeAbsolute:
@@ -945,7 +990,7 @@ class Time(Delta):
                 ticks=self.ticks)
 
 
-class Event(Delta):
+class Event:
     """Base class for MIDI events."""
 
     def __init__(self, **keywords):
@@ -956,7 +1001,7 @@ class Event(Delta):
         keyword arguments Delta supports can be passed to the constructor,
         in addition to the time and track keywords.
         """
-        self.time = keywords.pop('time', Time())
+        self.time = keywords.pop('time', TimeAbsolute()) 
         self.track = keywords.pop('track', None)
         super().__init__(**keywords)
 
@@ -977,7 +1022,6 @@ class Event(Delta):
         """
         if not isinstance(source, collections.Iterator):
             source = iter(source)
-        ticks = _var_int_parse(source)
         status = next(source)
         if status == MetaEvent.status:
             event = MetaEvent._parse(source)
@@ -985,7 +1029,6 @@ class Event(Delta):
             event = SysExEvent._parse(source, status)
         else:
             event = ChannelEvent._parse(source, status)
-        event.ticks = ticks
         return event
 
     def __str__(self):
@@ -1049,7 +1092,6 @@ class ChannelEvent(Event):
     def __bytes__(self):
         """Bytes, including delta time, for writing to a MIDI file."""
         array = bytearray()
-        array.extend(Delta.__bytes__(self))
         array.append(self.status)
         array.extend(self._parameters())
         return bytes(array)
@@ -1253,7 +1295,6 @@ class MetaEvent(Event):
         """Bytes, including delta time, for writing to a MIDI file."""
         array = bytearray()
         data = self._bytes()
-        array.extend(Delta.__bytes__(self))
         array.append(self.status)
         array.append(self.type)
         array.extend(_var_int_bytes(len(data)))
@@ -1450,7 +1491,7 @@ class SetTimeSignature(MetaEvent):
         TimeSignature.__init__.
         """
         super().__init__(**keywords)
-        if isinstance(signatue, TimeSignature):
+        if isinstance(signature, TimeSignature):
             self.signature = signature
         else:
             self.signature = TimeSignature(signature, **keywords)
@@ -1536,7 +1577,7 @@ class Sequence(list):
     objects.
     """
 
-    def __init__(self, events=list(), *, format=None, division=None):
+    def __init__(self, events=list(), *, format=None, specification=None):
         """
         Create a Sequence.
 
@@ -1547,7 +1588,7 @@ class Sequence(list):
         super().__init__(events)
         self._format = None
         self.format = format
-        self.division = division
+        self.specification = specification
 
     @staticmethod
     def parse(source):
@@ -1559,11 +1600,11 @@ class Sequence(list):
         if not isinstance(source, collections.Iterator):
             source = iter(source)
 
-        sequence = Sequence()
+        sequence = Sequence(specification=TimeSpecification())
         chunk = Chunk.parse(source, id='MThd')
         sequence.format = int.from_bytes(chunk[0:2], 'big')
         tracks = int.from_bytes(chunk[2:4], 'big')
-        sequence._division = TimeDivision(chunk[4:6])
+        sequence.specification.division = TimeDivision(chunk[4:6])
         track = 0
         for index in range(tracks):
             chunk = Chunk.parse(source)
@@ -1571,6 +1612,7 @@ class Sequence(list):
                 data = iter(chunk)
                 cumulative = 0
                 while True:
+                    delta = _var_int_parse(data)
                     try:
                         event = Event.parse(data)
                     except StopIteration:
@@ -1578,35 +1620,43 @@ class Sequence(list):
                             'Incomplete track. End Track event not found.')
                     if isinstance(event, EndTrack):
                         break
-                    cumulative += event.ticks
-                    event.cumulative = cumulative
+                    cumulative += delta
+                    event.time.specification = sequence.specification
+                    event.time.cumulative = cumulative
                     event.track = track
-                    event.division = sequence._division
                     sequence.append(event)
                 track += 1
 
         def cumulative(event):
-            return event.cumulative
+            return event.time.cumulative
         sequence.sort(key=cumulative)
-        tracks = sequence.tracks
-        times = list()
-        for track in range(tracks):
-            times.append(Time())
+
+        to_delete = list()
         tempo = Tempo()
         signature = TimeSignature()
-        for event in sequence:
-            del event.cumulative
-            if isinstance(event, SetTempo):
-                tempo = event.tempo
-            else:
-                event.tempo = tempo
-            if isinstance(event, SetTimeSignature):
-                signature = event.signature
-            else:
-                event.signature = signature
-            times[event.track] += event
-            event.time = times[event.track]
+        node = TimeSpecificationNode(tempo=tempo, signature=signature)
+        sequence.specification.append(node)
+        for index in range(len(sequence)):
+            event = sequence[index]
+            if isinstance(event, (SetTempo, SetTimeSignature)):
+                to_delete.append(index)
+                previous = sequence.specification[-1]
+                if isinstance(event, SetTempo):
+                    tempo = event.tempo
+                elif isinstance(event, SetTimeSignature):
+                    signature = event.signature
+                if previous.note == event.time.note:
+                    previous.tempo = tempo
+                    previous.signature = signature
+                else:
+                    node = TimeSpecificationNode(tempo=tempo,
+                            signature=signature,
+                            note=event.time.note, triple=event.time.triple,
+                            cumulative=event.time.cumulative)
+                    sequence.specification.append(node)
 
+        for index in reversed(to_delete):
+            del sequence[index]
         return sequence
 
     @property
@@ -1645,26 +1695,6 @@ class Sequence(list):
         del self._format
 
     @property
-    def division(self):
-        """
-        Access the time division of the sequence.
-        
-        Setting the time division of a sequence will update all events to
-        reference the new time division.
-        """
-        return self._division
-
-    @division.setter
-    def division(self, value):
-        self._division = value
-        for event in self:
-            event.division = self._division
-
-    @division.deleter
-    def division(self):
-        del self._division
-
-    @property
     def tracks(self):
         """
         Get the number of tracks in the sequence.
@@ -1689,6 +1719,17 @@ class Sequence(list):
                 events.append(event)
         return events
 
+    def sort(self, *, key=None, reverse=False):
+        if key == None:
+            def time(event):
+                return event.time.note
+            def track(event):
+                return event.track
+            super().sort(key=time, reverse=reverse)
+            super().sort(key=track, reverse=reverse)
+        else:
+            super().sort(key=key, reverse=False)
+
     def __bytes__(self):
         """Bytes for writing to a MIDI file."""
         array = bytearray()
@@ -1696,15 +1737,24 @@ class Sequence(list):
         tracks = self.tracks
         header.extend(self.format.to_bytes(2, 'big'))
         header.extend(tracks.to_bytes(2, 'big'))
-        header.extend(bytes(self.division))
+        header.extend(bytes(self.specification.division))
         chunk = Chunk(header, id='MThd')
         array.extend(chunk.raw)
+        
+        sequence = type(self)(self)
+        sequence.extend(self.specification.events(track=0))
+        sequence.sort()
         for track in range(tracks):
-            events = self.track(track)
-            events.append(EndTrack())
+            events = sequence.track(track)
             chunk = Chunk(id='MTrk')
+            cumulative = 0
             for event in events:
+                delta = event.time.cumulative - cumulative
+                chunk.extend(_var_int_bytes(event.time.cumulative))
                 chunk.extend(bytes(event))
+                cumulative = event.time.cumulative
+            chunk.extend(_var_int_bytes(0))
+            chunk.extend(bytes(EndTrack()))
             array.extend(chunk.raw)
         return bytes(array)
 
