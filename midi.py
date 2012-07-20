@@ -307,7 +307,7 @@ class Program:
         return (self.number - 1).to_bytes(1, 'big')
 
 
-class TimeSpecificationNode:
+class TimeNode:
     def __init__(self, *, note=0.0, bar=1, beat=1, tick=1, triple=None,
             cumulative=0, signature=None, tempo=None):
         self.note = note
@@ -406,7 +406,7 @@ class TimeSpecification(list):
         return event_list
 
     def append(self, node):
-        if not isinstance(node, TimeSpecificationNode):
+        if not isinstance(node, TimeNode):
             raise TypeError('cannot append {type!r} to \'TimeSpecification\''
                     .format(type=type(node).__name__))
         node.specification = self
@@ -417,7 +417,7 @@ class TimeSpecification(list):
             self.append(node)
 
 
-class TimeAbsolute:
+class Time:
     def __init__(self, note=0.0, *, specification=None):
         self._node = None
         self._cumulative = None
@@ -555,460 +555,10 @@ class TimeAbsolute:
         return string
 
 
-class Delta:
-    def __init__(self, source=None, division=None, tempo=None, 
-            signature=None):
-        self._division = division
-        self._old_division = division
-        self._tempo = tempo
-        self._old_tempo = tempo
-        self._ticks = None
-        self.signature = signature
-        if source == None:
-            self.ticks = 0
-        elif isinstance(source, numbers.Number):
-            self.ticks = source
-        elif isinstance(source, Delta):
-            self._division = source._division
-            self._tempo = source._tempo
-            if isinstance(source, Time):
-                self.signature = source._signature
-                self._ticks = source._total_ticks()
-            else:
-                source._update_division()
-                source._update_tempo()
-                self.signature = source.signature
-                self._ticks = source._ticks
-        else:
-            self.ticks = _var_int_parse(source)
-        self._update_tempo()
-        self._update_division()
-
-    @property
-    def ticks(self):
-        self._update_division()
-        self._update_tempo()
-        return round(self._ticks)
-
-    @ticks.setter
-    def ticks(self, value):
-        self._ticks = value
-
-    @ticks.deleter
-    def ticks(self):
-        del self._ticks
-
-    @property
-    def secs(self):
-        if self._division != None:
-            if self._division.mode == 'ppqn':
-                if self._tempo != None:
-                    return self.ticks / self._division.ppqn / self._tempo.bps
-            else:
-                return self.ticks / self._division.pps
-        return None
-
-    @secs.setter
-    def secs(self, value):
-        if self._division != None:
-            if self._division.mode == 'ppqn':
-                if self._tempo != None:
-                    self.ticks = self._division.ppqn * self._tempo.bps * value
-            else:
-                self.ticks = self._division.pps * value
-
-    @property
-    def division(self):
-        return self._division
-
-    @division.setter
-    def division(self, value):
-        self._division = value
-        self._update_division()
-
-    @division.deleter
-    def division(self):
-        del self._division
-        del self._old_division
-
-    @property
-    def tempo(self):
-        return self._tempo
-
-    @tempo.setter
-    def tempo(self, value):
-        self._tempo = value
-        self._update_tempo()
-
-    @tempo.deleter
-    def tempo(self):
-        del self._tempo
-        del self._old_tempo
-
-    def _update_division(self):
-        if self._division != None and self._ticks != None:
-            if self._old_division != None:
-                if self._division.mode == self._old_division.mode:
-                    if self._division.mode == 'ppqn':
-                        ratio = self._division.ppqn / self._old_division.ppqn
-                    else:
-                        ratio = self._division.pps / self._old_division.pps
-                    self._ticks *= ratio
-                elif self._tempo != None:
-                    if self._division.mode == 'ppqn':
-                        ratio = (self._division.ppqn /
-                                (self._old_division.pps / self._tempo.bps))
-                    else:
-                        ratio = (self._division.pps /
-                                (self._tempo.bps / self._old_division.ppqn))
-                    self._ticks *= ratio
-            self._old_division = copy.deepcopy(self._division)
-
-    def _update_tempo(self):
-        if self._tempo != None and self._ticks != None:
-            if (self._old_tempo != None and self._division != None and 
-                    self._division.mode == 'pps'):
-                self._ticks *= self._tempo.bpm / self._old_tempo.bpm
-            self._old_tempo = copy.deepcopy(self._tempo)
-    
-    def __add__(self, other):
-        try:
-            delta = self._prepare_operator(other)
-        except AttributeError:
-            return NotImplemented
-        delta._ticks = self._ticks + delta._ticks
-        return delta
-
-    def __sub__(self, other):
-        try:
-            delta = self._prepare_operator(other)
-        except AttributeError:
-            return NotImplemented
-        delta._ticks = self._ticks - delta._ticks
-        return delta
-
-    def __lt__(self, other):
-        try:
-            delta = self._prepare_operator(other)
-        except AttributeError:
-            return NotImplemented
-        return round(self._ticks) < round(delta._ticks)
-
-    def __le__(self, other):
-        try:
-            delta = self._prepare_operator(other)
-        except AttributeError:
-            return NotImplemented
-        return round(self._ticks) <= round(delta._ticks)
-
-    def __eq__(self, other):
-        if other == None:
-            return False
-        try:
-            delta = self._prepare_operator(other)
-        except AttributeError:
-            return NotImplemented
-        return round(self._ticks) == round(delta._ticks)
-
-    def __ne__(self, other):
-        if other == None:
-            return True
-        try:
-            delta = self._prepare_operator(other)
-        except AttributeError:
-            return NotImplemented
-        return round(self._ticks) != round(delta._ticks)
-
-    def __gt__(self, other):
-        try:
-            delta = self._prepare_operator(other)
-        except AttributeError:
-            return NotImplemented
-        return round(self._ticks) > round(delta._ticks)
-
-    def __ge__(self, other):
-        try:
-            delta = self._prepare_operator(other)
-        except AttributeError:
-            return NotImplemented
-        return round(self._ticks) >= round(delta._ticks)
-
-    def _prepare_operator(self, other):
-        self._update_division()
-        self._update_tempo()
-        delta = Delta(other)
-        delta.division = self._division
-        delta.tempo = self._tempo
-        return delta
-
-    def __str__(self):
-        return str(self.ticks)
-
-    def __repr__(self):
-        return 'Delta({ticks})'.format(ticks=self.ticks)
-
-    def __bytes__(self):
-        ticks = self.ticks
-        if ticks == None:
-            return bytes(1)
-        else:
-            return _var_int_bytes(ticks)
-
-
-class Time(Delta):
-    def __init__(self, source=None, **keywords):
-        division = keywords.get('division', TimeDivision(480))
-        tempo = keywords.get('tempo', None)
-        signature = keywords.get('signature', None)
-        self._division = division
-        self._old_division = division
-        self._tempo = tempo
-        self._old_tempo = tempo
-        self._ticks = None
-        if isinstance(source, collections.Iterable):
-            if isinstance(source, str):
-                source = source.split('|')
-            self._bars = int(source[0]) - 1
-            self._beats = int(source[1]) - 1
-            self._ticks = int(source[2])
-        elif isinstance(source, Delta):
-            self._tempo = source.tempo
-            self._old_division = source.division
-            if isinstance(source, Time):
-                signature = source._signature
-                source._update_signature()
-                self._bars = source._bars
-                self._beats = source._beats
-            else:
-                signature = source.signature
-                self._bars = 0
-                self._beats = 0
-            self._ticks = source._ticks
-        else:
-            self._bars = keywords.get('bars', 0)
-            self._beats = keywords.get('beats', 0)
-            self._ticks = keywords.get('ticks', 0)
-        self._division = division
-        self._signature = signature
-        self._update_division()
-        self._update_tempo()
-        self._update_signature()
-    
-    @property
-    def bars(self):
-        self._update_signature()
-        return self._bars + 1
-
-    @bars.setter
-    def bars(self, value):
-        self._bars = value - 1
-        self._update_signature()
-
-    @bars.deleter
-    def bars(self):
-        del self._bars
-
-    @property
-    def beats(self):
-        self._update_signature()
-        return self._beats + 1
-
-    @beats.setter
-    def beats(self, value):
-        self._beats = value -1
-        self._update_signature()
-
-    @beats.deleter
-    def beats(self):
-        del self._beats
-
-    @property
-    def ticks(self):
-        self._update_division()
-        self._update_tempo()
-        self._update_signature()
-        return round(self._ticks)
-
-    @ticks.setter
-    def ticks(self, value):
-        self._ticks = value
-        self._update_signature()
-
-    @ticks.deleter
-    def ticks(self):
-        del self._ticks
-
-    @property
-    def signature(self):
-        return self._signature
-
-    @signature.setter
-    def signature(self, value):
-        self._signature = value
-        self._update_signature()
-
-    @signature.deleter
-    def signature(self):
-        del self._signature
-
-    def _total_ticks(self):
-        self._update_division()
-        self._update_tempo()
-        self._update_signature()
-        if (self._tempo != None and self._signature != None and 
-                self._division != None):
-            if self._division.mode == 'ppqn':
-                ppqn = self._division.ppqn
-            else:
-                ppqn = self._division.pps / self._tempo.bps
-            ppb = 4 / self._signature.denominator * ppqn
-            beats = self._beats
-            beats += self._bars * self._signature.numerator
-            ticks = self._ticks
-            ticks += beats * ppb
-            return ticks
-        else:
-            return None
-
-    def _update_signature(self):
-        if (self._tempo != None and self._signature != None and 
-                self._division != None):
-            if self._division.mode == 'ppqn':
-                ppqn = self._division.ppqn
-            else:
-                ppqn = self._division.pps / self._tempo.bps
-            ppb = 4 / self._signature.denominator * ppqn
-            self._beats += math.floor(self._ticks / ppb)
-            self._ticks = self._ticks % ppb
-            self._bars += self._beats // self._signature.numerator
-            self._beats = self._beats % self._signature.numerator
-    
-    def __add__(self, other):
-        try:
-            time = self._prepare_operator(other)
-        except AttributeError:
-            return NotImplemented
-        time._bars += self._bars
-        time._beats += self._beats
-        time._ticks += self._ticks
-        time._update_signature()
-        return time
-
-    def __sub__(self, other):
-        try:
-            time = self._prepare_operator(other)
-        except AttributeError:
-            return NotImplemented
-        time._bars = self._bars - time._bars
-        time._beats = self._beats - time._beats
-        time._ticks = self._ticks - time._ticks
-        time._update_signature()
-        return time
-
-    def __lt__(self, other):
-        try:
-            time = self._prepare_operator(other)
-        except AttributeError:
-            return NotImplemented
-        if self._bars < time._bars:
-            return True
-        elif self._bars == time._bars:
-            if self._beats < time._beats:
-                return True
-            elif self._beats == time._beats:
-                if round(self._ticks) < round(time._ticks):
-                    return True
-        return False
-
-    def __le__(self, other):
-        try:
-            time = self._prepare_operator(other)
-        except AttributeError:
-            return NotImplemented
-        if self._bars < time._bars:
-            return True
-        elif self._bars == time._bars:
-            if self._beats < time._beats:
-                return True
-            elif self._beats == time._beats:
-                if round(self._ticks) <= round(time._ticks):
-                    return True
-        return False
-
-    def __eq__(self, other):
-        if other == None:
-            return False
-        try:
-            time = self._prepare_operator(other)
-        except AttributeError:
-            return NotImplemented
-        return (self._bars == time._bars and
-                self._beats == time._beats and
-                round(self._ticks) == round(time._ticks))
-
-    def __ne__(self, other):
-        if other == None:
-            return True
-        try:
-            time = self._prepare_operator(other)
-        except AttributeError:
-            return NotImplemented
-        return (self._bars != time._bars or
-                self._beats != time._beats or
-                round(self._ticks) != round(time._ticks))
-
-    def __gt__(self, other):
-        try:
-            time = self._prepare_operator(other)
-        except AttributeError:
-            return NotImplemented
-        if self._bars > time._bars:
-            return True
-        elif self._bars == time._bars:
-            if self._beats > time._beats:
-                return True
-            elif self._beats == time._beats:
-                if round(self._ticks) > round(time._ticks):
-                    return True
-        return False
-
-    def __ge__(self, other):
-        try:
-            time = self._prepare_operator(other)
-        except AttributeError:
-            return NotImplemented
-        if self._bars > time._bars:
-            return True
-        elif self._bars == time._bars:
-            if self._beats > time._beats:
-                return True
-            elif self._beats == time._beats:
-                if round(self._ticks) >= round(time._ticks):
-                    return True
-        return False
-
-    def _prepare_operator(self, other):
-        self._update_division()
-        self._update_tempo()
-        self._update_signature()
-        time = Time(other)
-        time.division = self._division
-        return time
-
-    def __str__(self):
-        return '{bars}|{beats}|{ticks}'.format(bars=self.bars,
-                beats=self.beats, ticks=self.ticks)
-
-    def __repr__(self):
-        return '{name}(({bars}, {beats}, {ticks}))'.format(
-                name=type(self).__name__, bars=self.bars, beats=self.beats,
-                ticks=self.ticks)
-
-
 class Event:
     """Base class for MIDI events."""
 
-    def __init__(self, **keywords):
+    def __init__(self, *, time=Time(), track=None):
         """
         Create a new Event object.
 
@@ -1016,9 +566,8 @@ class Event:
         keyword arguments Delta supports can be passed to the constructor,
         in addition to the time and track keywords.
         """
-        self.time = keywords.pop('time', TimeAbsolute()) 
-        self.track = keywords.pop('track', None)
-        super().__init__(**keywords)
+        self.time = time
+        self.track = track
 
     track = None
     time = None
@@ -1649,7 +1198,7 @@ class Sequence(list):
         to_delete = list()
         tempo = Tempo()
         signature = TimeSignature()
-        node = TimeSpecificationNode(tempo=tempo, signature=signature)
+        node = TimeNode(tempo=tempo, signature=signature)
         sequence.specification.append(node)
         for index in range(len(sequence)):
             event = sequence[index]
@@ -1664,8 +1213,7 @@ class Sequence(list):
                     previous.tempo = tempo
                     previous.signature = signature
                 else:
-                    node = TimeSpecificationNode(tempo=tempo,
-                            signature=signature,
+                    node = TimeNode(tempo=tempo, signature=signature,
                             note=event.time.note, triple=event.time.triple,
                             cumulative=event.time.cumulative)
                     sequence.specification.append(node)
