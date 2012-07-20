@@ -120,7 +120,7 @@ class TimeDivision:
     @property
     def frames(self):
         """Return SMPTE frames per second in PPS mode"""
-        if mode != 'ppqn' and hasattr(self, '_frames'):
+        if hasattr(self, '_frames'):
             if self._frames == 29:
                 return 29.97
             else:
@@ -305,6 +305,194 @@ class Program:
     def __bytes__(self):
         """Single byte integer of the program number."""
         return (self.number - 1).to_bytes(1, 'big')
+
+
+class TimeSpecificationNode:
+    def __init__(self):
+        self.note = 0.0
+        self.bar = 1
+        self.beat = 1
+        self.tick = 1
+        self.cumulative = 0
+        self.signature = TimeSignature()
+        self.division = TimeDivision(256)
+        self.tempo = Tempo(84)
+
+    @property
+    def ppn(self):
+        if self.division.mode == 'ppqn':
+            return self.division.ppqn * 4
+        else:
+            return self.division.pps / self.tempo.bps * 4
+
+
+class TimeSpecification(list):
+
+    def triple(self, iterable):
+        bar, beat, tick = iterable
+        for node in reversed(self):
+            if node.bar < bar:
+                return node
+            elif node.bar == bar:
+                if node.beat < beat:
+                    return node
+                elif node.beat == beat:
+                    if node.tick <= tick:
+                        return node
+        return None
+
+    def time(self, time_object):
+        return self._lookup(time_object.note, 'note')
+
+    def note(self, value):
+        return self._lookup(value, 'note')
+    
+    def cumulative(self, value):
+        return self._lookup(value, 'cumulative')
+    
+    def _lookup(self, value, key):
+        for node in reversed(self):
+            if node.__dict__[key] <= value:
+                return node
+        return None
+
+
+class TimeAbsolute:
+    def __init__(self, note=0.0, *, specification=None):
+        self._node = None
+        self._cumulative = None
+        self._note = note
+        self.specification = specification
+
+    @property
+    def note(self):
+        if self._note == 0 and self._cumulative != None:
+            self.cumulative = self._cumulative
+        return self._note
+
+    @note.setter
+    def note(self, value):
+        self._note = value
+
+    @property
+    def bar(self):
+        node = self.node
+        if node == None:
+            return None
+        note = self.note - node.note
+        npm = node.signature.numerator / node.signature.denominator
+        return math.floor(note / npm) + node.bar
+
+    @bar.setter
+    def bar(self, value):
+        self._node = self._node_error('bar')
+        self.triple = (value, self.beat, self.tick)
+        self._node = None
+
+    @property
+    def beat(self):
+        node = self.node
+        if node == None:
+            return None
+        note = self.note - node.note
+        npm = node.signature.numerator / node.signature.denominator
+        npb = node.signature.denominator
+        return math.floor((note % npm) * npb) + node.beat
+
+    @beat.setter
+    def beat(self, value):
+        self._node = self._node_error('beat')
+        self.triple = (self.bar, value, self.tick)
+        self._node = None
+
+    @property
+    def tick(self):
+        node = self.node
+        if node == None:
+            return None
+        note = self.note - node.note
+        mod = note % (1 / node.signature.denominator)
+        return math.floor(mod * 1920) + node.tick
+
+    @tick.setter
+    def tick(self, value):
+        self._node = self._node_error('tick')
+        self.triple = (self.bar, self.beat, value)
+        self._node = None
+
+    @property
+    def cumulative(self):
+        node = self.node
+        if node == None:
+            return self._cumulative
+        note = self.note - node.note
+        return round(note * node.ppn + node.cumulative)
+
+    @cumulative.setter
+    def cumulative(self, value):
+        if self.specification == None:
+            self._cumulative = value
+            return
+        node = self.specification.cumulative(value)
+        if node == None:
+            self._cumulative = value
+            return
+        self._cumulative = None
+        self._note = node.note + (value - node.cumulative) / node.ppn
+
+    @property
+    def triple(self):
+        self._node = self.specification.time(self)
+        triple_tuple = (self.bar, self.beat, self.tick)
+        self._node = None
+        return triple_tuple
+
+    @triple.setter
+    def triple(self, value):
+        bar, beat, tick = value
+        error = 'Triple out of range: {bar}|{beat}|{tick}.'.format(
+                bar=bar, beat=beat, tick=tick)
+        if bar < 1 or beat < 1 or tick < 1:
+            raise MIDIError(error)
+        if self.specification == None:
+            raise MIDIError('Cannot set triple without a time specification.')
+        node = self.specification.triple(value)
+        if node == None:
+            raise MIDIError('Cannot set triple without a time specification.')
+        if beat > node.signature.numerator:
+            raise MIDIError(error)
+        if tick > 1920 / node.signature.denominator:
+            raise MIDIError(error)
+        npm = node.signature.numerator / node.signature.denominator
+        self._note = (bar - 1) * npm
+        self._note += (beat - 1) / node.signature.denominator
+        self._note += (tick - 1) / 1920
+
+    @property
+    def node(self):
+        if self._node != None:
+            return self._node
+        if self.specification == None:
+            return None
+        return self.specification.time(self)
+
+    def _node_error(self, attribute):
+        node = self.node
+        if node != None:
+            return node
+        raise MIDIError(
+                'Cannot set {attribute} without a time specification.'.format(
+                attribute=attribute))
+
+    def __repr__(self):
+        return str(self)
+
+    def __str__(self):
+        self._node = self.specification.time(self)
+        string = '{bar}|{beat}|{tick}'.format(bar=self.bar,
+                beat=self.beat, tick=self.tick)
+        self._node = None
+        return string
 
 
 class Delta:
