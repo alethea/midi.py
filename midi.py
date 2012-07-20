@@ -356,6 +356,21 @@ class TimeSpecification(list):
                         return node
         return None
 
+    @property
+    def division(self):
+        return self._division
+
+    @division.setter
+    def division(self, value):
+        self._division = value
+        if self._division != None
+            note = 0.0
+            cumulative = 0
+            for node in self:
+                node.cumulative = cumulative + (node.note - note) * node.ppn
+                cumulative = node.cumulative
+                note = node.note
+
     def time(self, time_object):
         return self._lookup(time_object.note, 'note')
 
