@@ -363,7 +363,7 @@ class TimeSpecification(list):
     @division.setter
     def division(self, value):
         self._division = value
-        if self._division != None
+        if self._division != None:
             note = 0.0
             cumulative = 0
             for node in self:
