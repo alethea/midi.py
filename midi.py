@@ -581,7 +581,7 @@ class TimeSpecification(list):
 class Event:
     """Base class for MIDI events."""
 
-    def __init__(self, *, time=Time(), track=None):
+    def __init__(self, *, time=None, track=None):
         """
         Create a new Event object.
 
@@ -589,6 +589,8 @@ class Event:
         keyword arguments Delta supports can be passed to the constructor,
         in addition to the time and track keywords.
         """
+        if time == None:
+            time = Time()
         self.time = time
         self.track = track
 
@@ -1336,7 +1338,7 @@ class Sequence(list):
             cumulative = 0
             for event in events:
                 delta = event.time.cumulative - cumulative
-                chunk.extend(_var_int_bytes(event.time.cumulative))
+                chunk.extend(_var_int_bytes(delta))
                 chunk.extend(bytes(event))
                 cumulative = event.time.cumulative
             chunk.extend(_var_int_bytes(0))
