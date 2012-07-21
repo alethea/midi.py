@@ -1309,12 +1309,20 @@ class Sequence(list):
 
     def sort(self, *, key=None, reverse=False):
         if key == None:
-            def time(event):
-                return event.time.note
+            def meta(event):
+                if isinstance(event, SetTimeSignature):
+                    return -1
+                elif isinstance(event, SetTempo):
+                    return - 2
+                else:
+                    return 0
             def track(event):
                 return event.track
-            super().sort(key=time, reverse=reverse)
+            def time(event):
+                return event.time.note
+            super().sort(key=meta, reverse=reverse)
             super().sort(key=track, reverse=reverse)
+            super().sort(key=time, reverse=reverse)
         else:
             super().sort(key=key, reverse=False)
 
