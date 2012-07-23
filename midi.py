@@ -20,6 +20,7 @@ import io
 import binascii
 import collections
 import numbers
+import operator
 import copy
 import math
 
@@ -433,6 +434,41 @@ class Time:
         raise MIDIError(
                 'Cannot set {attribute} without a time specification.'.format(
                 attribute=attribute))
+
+    def _comparison(self, other, comparison):
+        if isinstance(other, Time):
+            return comparison(self.note, other.note)
+        elif isinstance(other, collections.Iterable):
+            if len(other) == 3:
+                time = Time(specification=self.specification)
+                time.triple = other
+                return comparison(self.note, time.note)
+        elif isinstance(other, numbers.Number):
+            return comparison(self.note, other)
+        elif other == None:
+            if comparison == operator.eq:
+                return False
+            elif comparison == operator.ne:
+                return True
+        return NotImplemented
+    
+    def __lt__(self, other):
+        return self._comparison(other, operator.lt)
+
+    def __le__(self, other):
+        return self._comparison(other, operator.le)
+
+    def __eq__(self, other):
+        return self._comparison(other, operator.eq)
+
+    def __ne__(self, other):
+        return self._comparison(other, operator.ne)
+
+    def __ge__(self, other):
+        return self._comparison(other, operator.ge)
+
+    def __gt__(self, other):
+        return self._comparison(other, operator.gt)
 
     def __repr__(self):
         return str(self)
@@ -1319,7 +1355,7 @@ class Sequence(list):
             def track(event):
                 return event.track
             def time(event):
-                return event.time.note
+                return event.time
             super().sort(key=meta, reverse=reverse)
             super().sort(key=track, reverse=reverse)
             super().sort(key=time, reverse=reverse)
