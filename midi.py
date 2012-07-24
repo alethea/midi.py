@@ -608,6 +608,11 @@ class TimeSpecification(list):
     def offset(self, time):
         for node in self:
             node.note += time.note
+        for index in reversed(range(len(self))):
+            if self[index].note <= 0.0:
+                self[index].note = 0.0
+                break
+        del self[:index]
         self._update_cumulative()
 
     def append(self, object):
