@@ -1390,11 +1390,13 @@ class Sequence(list):
         if key == None:
             def meta(event):
                 if isinstance(event, SetTimeSignature):
-                    return -1
-                elif isinstance(event, SetTempo):
-                    return - 2
-                else:
                     return 0
+                elif isinstance(event, SetTempo):
+                    return 1
+                elif isinstance(event, ProgramChange):
+                    return 2
+                else:
+                    return 3
             def track(event):
                 return event.track
             def time(event):
