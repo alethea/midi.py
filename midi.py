@@ -440,17 +440,33 @@ class Time:
             return comparison(self.note, other.note)
         elif isinstance(other, collections.Iterable):
             if len(other) == 3:
+                for item in other:
+                    if not isinstance(other, numbers.Number):
+                        return NotImplemented
                 time = Time(specification=self.specification)
                 time.triple = other
                 return comparison(self.note, time.note)
-        elif isinstance(other, numbers.Number):
-            return comparison(self.note, other)
         elif other == None:
             if comparison == operator.eq:
                 return False
             elif comparison == operator.ne:
                 return True
         return NotImplemented
+    
+    def _operation(self, other, operation):
+        time = Time(specification=self.specification)
+        if isinstance(other, Time):
+            time.note = operation(self.note, other.note)
+        elif isinstance(other, collections.Iterable):
+            if len(other) == 3:
+                for item in other:
+                    if not isinstance(other, numbers.Number):
+                        return NotImplemented
+                time.triple = other
+                time.note = operatrion(self.note, other.note)
+        else:
+            return NotImplemented
+        return time
     
     def __lt__(self, other):
         return self._comparison(other, operator.lt)
@@ -469,6 +485,12 @@ class Time:
 
     def __gt__(self, other):
         return self._comparison(other, operator.gt)
+
+    def __add__(self, other):
+        return self._operation(other, operator.add)
+
+    def __sub__(self, other):
+        return self._operation(other, operator.sub)
 
     def __repr__(self):
         return str(self)
@@ -549,13 +571,7 @@ class TimeSpecification(list):
     @division.setter
     def division(self, value):
         self._division = value
-        if self._division != None:
-            note = 0.0
-            cumulative = 0
-            for node in self:
-                node.cumulative = cumulative + (node.note - note) * node.ppn
-                cumulative = node.cumulative
-                note = node.note
+        self._update_cumulative()
 
     def time(self, time_object):
         return self._lookup(time_object.note, 'note')
@@ -566,12 +582,6 @@ class TimeSpecification(list):
     def cumulative(self, value):
         return self._lookup(value, 'cumulative')
     
-    def _lookup(self, value, key):
-        for node in reversed(self):
-            if node.__dict__[key] <= value:
-                return node
-        return None
-
     def events(self, *, track=None):
         self.sort()
         tempo = None
@@ -612,6 +622,21 @@ class TimeSpecification(list):
                 return node.note
             key = note
         super().sort(key=key, reverse=reverse)
+
+    def _lookup(self, value, key):
+        for node in reversed(self):
+            if node.__dict__[key] <= value:
+                return node
+        return None
+
+    def _update_cumulative(self):
+        if self._division != None:
+            note = 0.0
+            cumulative = 0
+            for node in self:
+                node.cumulative = cumulative + (node.note - note) * node.ppn
+                cumulative = node.cumulative
+                note = node.note
 
 
 class Event:
