@@ -544,6 +544,9 @@ class TimeNode:
         else:
             return self.specification.division.pps / self.tempo.bps * 4
 
+    def __repr__(self):
+        return 'TimeNode(note={note})'.format(note=self.note)
+
 
 class TimeSpecification(list):
     def __init__(self, nodes=list(), *, division=None):
@@ -601,6 +604,11 @@ class TimeSpecification(list):
                 event.time.note = node.note
                 event_list.append(event)
         return event_list
+    
+    def offset(self, time):
+        for node in self:
+            node.note += time.note
+        self._update_cumulative()
 
     def append(self, object):
         if not isinstance(object, (Time, TimeNode)):
@@ -1367,6 +1375,11 @@ class Sequence(list):
             if event.track == track:
                 events.append(event)
         return events
+
+    def offset(self, time):
+        for event in self:
+            event.time += time
+        self.specification.offset(time)
 
     def sort(self, *, key=None, reverse=False):
         if key == None:
