@@ -66,6 +66,29 @@ class Tempo:
     def bps(self, value):
         self.bpm = value * 60
 
+    def _comparison(self, other, comparison):
+        if isinstance(other, Tempo):
+            return comparison(self.bpm, other.bpm)
+        return NotImplemented
+
+    def __lt__(self, other):
+        return self._comparison(other, operator.lt)
+
+    def __le__(self, other):
+        return self._comparison(other, operator.le)
+
+    def __eq__(self, other):
+        return self._comparison(other, operator.eq)
+
+    def __ne__(self, other):
+        return self._comparison(other, operator.ne)
+
+    def __ge__(self, other):
+        return self._comparison(other, operator.ge)
+
+    def __gt__(self, other):
+        return self._comparison(other, operator.gt)
+
     def __str__(self):
         return '{bpm} BPM'.format(bpm=round(self.bpm))
 
@@ -224,6 +247,22 @@ class TimeSignature:
             self.denominator = denominator
             self.metronome = metronome
             self.clock = clock
+    
+    def __eq__(self, other):
+        if isinstance(other, TimeSignature):
+            return (self.numerator == other.numerator and
+                    self.denominator == other.denominator and
+                    self.metronome == other.metronome and
+                    self.clock == other.clock)
+        return NotImplemented
+
+    def __ne__(self, other):
+        if isinstance(other, TimeSignature):
+            return (self.numerator != other.numerator or
+                    self.denominator != other.denominator or
+                    self.metronome != other.metronome or
+                    self.clock != other.clock)
+        return NotImplemented
 
     def __str__(self):
         return '{numerator}/{denominator}'.format(
@@ -296,6 +335,17 @@ class Program:
     @desc.setter
     def desc(self, value):
         self.number = Program._desc_numbers.get(value, 1)
+
+    def _comparison(self, other, comparison):
+        if isinstance(other, Program):
+            return comparison(self.number, other.number)
+        return NotImplemented
+
+    def __eq__(self, other):
+        return self._comparison(other, operator.eq)
+
+    def __ne__(self, other):
+        return self._comparison(other, operator.ne)
 
     def __str__(self):
         return Program._descs.get(self.number, '')
@@ -446,11 +496,6 @@ class Time:
                 time = Time(specification=self.specification)
                 time.triple = other
                 return comparison(self.note, time.note)
-        elif other == None:
-            if comparison == operator.eq:
-                return False
-            elif comparison == operator.ne:
-                return True
         return NotImplemented
     
     def _operation(self, other, operation):
