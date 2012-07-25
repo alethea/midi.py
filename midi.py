@@ -970,14 +970,14 @@ class TextMetaEvent(MetaEvent):
     Base class for meta events with a text payload.
 
     The text is available through the text attribute. Characters should not
-    exceed the ASCII range.
+    exceed the ASCII range, but can include ISO 8859-1 characters.
     """
 
     def __init__(self, text=None, **keywords):
         """Create a TextMetaEvent from a string argument, if present."""
         super().__init__(**keywords)
         try:
-            self.text = str(text, 'ascii')
+            self.text = str(text, 'iso8859-1')
         except TypeError:
             self.text = text
 
@@ -987,7 +987,7 @@ class TextMetaEvent(MetaEvent):
 
     def _bytes(self):
         """Delegate bytes method, called by MetaEvent.__bytes__."""
-        return self.text.encode('ascii')
+        return self.text.encode('iso8859-1')
 
 
 class SequenceNumber(MetaEvent):
@@ -1485,9 +1485,9 @@ class Chunk(bytearray):
 
             if mode == 'id' and len(chunk) >= 4:
                 try:
-                    chunk.id = chunk[0:4].decode('ascii')
+                    chunk.id = chunk[0:4].decode('iso8859-1')
                 except UnicodeError:
-                    raise MIDIError( 'Encountered a non-ASCII chunk ID.')
+                    raise MIDIError('Unable to parse chunk ID.')
                 if id and id != chunk.id:
                     raise MIDIError('{id} chunk not found.'.format(id=id))
                 mode = 'len'
@@ -1504,14 +1504,14 @@ class Chunk(bytearray):
     @property
     def raw(self):
         """Access the raw data, including ID and length bytes."""
-        value = bytearray(self.id, 'ascii')
+        value = bytearray(self.id, 'iso8859-1')
         value.extend(len(self).to_bytes(4, 'big'))
         value.extend(self)
         return value
     
     @raw.setter
     def raw(self, value):
-        self.id = str(value, 'ascii')
+        self.id = str(value, 'iso8859-1')
         self[:] = value[8:]
 
     def __bytes__(self):
