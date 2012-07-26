@@ -642,12 +642,10 @@ class TimeSpecification:
                 return
 
     def update(self):
-        def note(node):
-            return node.note
-        self.tempos.sort(key=note)
-        self.signatures.sort(key=note)
+        self._clean(self.tempos, 'tempo')
+        self._clean(self.signatures, 'signature')
         changes = self.tempos + self.signatures
-        changes.sort(key=note)
+        changes.sort(key=self._note)
 
         tempo = self._default_tempo
         signature = self._default_signature
@@ -707,6 +705,27 @@ class TimeSpecification:
             event_list.append(SetTimeSignature(time=time,
                 signature=node.signature, track=track))
         return event_list
+
+    @staticmethod
+    def _note(node):
+        return node.note
+
+    def _clean(self, nodes, attribute):
+        nodes.sort(key=self._note)
+        to_delete = list()
+        for index in range(1, len(nodes)):
+            if nodes[index].note == nodes[index - 1].note:
+                to_delete.append(index - 1)
+        for index in reversed(to_delete):
+            del nodes[index]
+
+        to_delete = list()
+        for index in range(1, len(nodes)):
+            if (nodes[index].__dict__[attribute] ==
+                    nodes[index - 1].__dict__[attribute]):
+                to_delete.append(index)
+        for index in reversed(to_delete):
+            del nodes[index]
 
     def _lookup(self, value, key):
         for node in reversed(self._cache):
