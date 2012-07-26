@@ -55,7 +55,7 @@ class Tempo:
 
     @mpqn.setter
     def mpqn(self, value):
-        self.bpm = 60000000 / value
+        self.bpm = round(60000000 / value)
 
     @property
     def bps(self):
