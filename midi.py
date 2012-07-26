@@ -705,12 +705,10 @@ class TimeSpecification:
 
     def events(self, *, track=None):
         event_list = list()
-        for node in self.tempos:
+        for node in self._cache:
             time = Time(node.note, specification=self)
             event_list.append(SetTempo(time=time, tempo=node.tempo, 
                 track=track))
-        for node in self.signatures:
-            time = Time(node.note, specification=self)
             event_list.append(SetTimeSignature(time=time,
                 signature=node.signature, track=track))
         return event_list
@@ -1462,9 +1460,9 @@ class Sequence(list):
     def sort(self, *, key=None, reverse=False):
         if key == None:
             def meta(event):
-                if isinstance(event, SetTimeSignature):
+                if isinstance(event, SetTempo):
                     return 0
-                elif isinstance(event, SetTempo):
+                elif isinstance(event, SetTimeSignature):
                     return 1
                 elif isinstance(event, ProgramChange):
                     return 2
