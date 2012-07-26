@@ -640,7 +640,16 @@ class TimeSpecification:
                 del item
                 self.update()
                 return
-
+    
+    def merge(self, other):
+        if isinstance(other, TimeSpecification):
+            self.tempos.extend(other.tempos)
+            self.signatures.extend(other.signatures)
+            self.update()
+        else:
+            raise TypeError('Cannot merge \'TimeSpecification\' and {name!r}'\
+                    .format(name=type(other).__name__))
+    
     def update(self):
         self._clean(self.tempos, 'tempo')
         self._clean(self.signatures, 'signature')
