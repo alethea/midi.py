@@ -458,8 +458,6 @@ class Time:
         if self.specification == None:
             raise MIDIError('Cannot set triple without a time specification.')
         node = self.specification.triple(value)
-        if node == None:
-            raise MIDIError('Cannot set triple without a time specification.')
         if beat > node.signature.numerator:
             raise MIDIError(error)
         if tick > 1920 / node.signature.denominator:
@@ -538,7 +536,7 @@ class Time:
         return self._operation(other, operator.sub)
 
     def __repr__(self):
-        return 'Time({note})'.format(note=note)
+        return 'Time({note})'.format(note=self.note)
 
     def __str__(self):
         self._node = self.specification.time(self)
