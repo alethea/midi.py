@@ -451,16 +451,16 @@ class Time:
     @triple.setter
     def triple(self, value):
         bar, beat, tick = value
-        error = 'Triple out of range: {bar}|{beat}|{tick}.'.format(
+        error = 'Triple out of range: {bar}|{beat}|{tick:03}.'.format(
                 bar=bar, beat=beat, tick=tick)
-        if bar < 1 or beat < 1 or tick < 1:
+        if bar < 1 or beat < 1 or tick < 0:
             raise MIDIError(error)
         if self.specification == None:
             raise MIDIError('Cannot set triple without a time specification.')
         node = self.specification.triple(value)
         if beat > node.signature.numerator:
             raise MIDIError(error)
-        if tick > 1920 / node.signature.denominator:
+        if tick >= 1920 / node.signature.denominator:
             raise MIDIError(error)
         npm = node.signature.numerator / node.signature.denominator
         self._note = node.note
@@ -541,13 +541,13 @@ class Time:
 
     def __str__(self):
         self._node = self.specification.time(self)
-        string = '{bar}|{beat}|{tick}'.format(bar=self.bar,
+        string = '{bar}|{beat}|{tick:03}'.format(bar=self.bar,
                 beat=self.beat, tick=self.tick)
         self._node = None
         return string
 
 class TimeNode:
-    def __init__(self, note=0.0, *, bar=1, beat=1, tick=1, triple=None,
+    def __init__(self, note=0.0, *, bar=1, beat=1, tick=0, triple=None,
             cumulative=0, signature=None, tempo=None, specification=None):
         self.specification = specification
         self.note = note
