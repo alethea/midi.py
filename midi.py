@@ -612,6 +612,7 @@ class TimeSpecification:
         self._cache = list()
         self._default_tempo = Tempo()
         self._default_signature = TimeSignature()
+        self.update()
     
     @property
     def division(self):
@@ -700,7 +701,7 @@ class TimeSpecification:
                     return node
                 elif node.beat == beat:
                     if node.tick <= tick:
-                        return Node
+                        return node
         return None
 
     def events(self, *, track=None):
