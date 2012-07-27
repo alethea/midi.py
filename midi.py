@@ -413,7 +413,7 @@ class Time:
             return None
         note = self.note - node.note
         mod = note % (1 / node.signature.denominator)
-        return math.floor(mod * 1920) + node.tick
+        return round(mod * 1920) + node.tick
 
     @tick.setter
     def tick(self, value):
@@ -463,9 +463,10 @@ class Time:
         if tick > 1920 / node.signature.denominator:
             raise MIDIError(error)
         npm = node.signature.numerator / node.signature.denominator
-        self._note = (bar - 1) * npm
-        self._note += (beat - 1) / node.signature.denominator
-        self._note += (tick - 1) / 1920
+        self._note = node.note
+        self._note += (bar - node.bar) * npm
+        self._note += (beat - node.beat) / node.signature.denominator
+        self._note += (tick - node.tick) / 1920
 
     @property
     def node(self):
