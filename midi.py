@@ -783,7 +783,7 @@ class Event:
         return event
 
     def __str__(self):
-        return type(self).__name__
+        return _name_to_desc(type(self).__name__)
 
 
 class ChannelEvent(Event):
@@ -1627,6 +1627,19 @@ def _var_int_bytes(value):
     array = reversed(array)
     return bytes(array)
             
+
+def _name_to_desc(name):
+    """Convert a name (e.g.: 'NoteOn') to a description (e.g.: 'Note On')."""
+    if len(name) < 1:
+        return ''
+    desc = list()
+    desc.append(name[0])
+    for index in range(1, len(name)):
+        if name[index].isupper():
+            desc.append(' ')
+        desc.append(name[index])
+    return ''.join(desc)
+
 
 class MIDIError(Exception):
     """
