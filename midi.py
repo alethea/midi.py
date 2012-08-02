@@ -906,7 +906,7 @@ class NoteAftertouch(ChannelEvent):
         return (self.note, self.amount)
 
 
-class Controller(ChannelEvent):
+class ControlChange(ChannelEvent):
     """
     Indicates a change in a controller on a channel.
 
@@ -915,7 +915,7 @@ class Controller(ChannelEvent):
 
     def __init__(self, controller=None, value=None, **keywords):
         """
-        Create a Controller object. Accepts controller and value arguments.
+        Create a ControlChange object. Accepts controller and value arguments.
         """
         super().__init__(**keywords)
         self.controller = controller
@@ -1370,35 +1370,18 @@ class Sequence(list):
                     except StopIteration:
                         raise MIDIError(
                             'Incomplete track. End Track event not found.')
-                    if isinstance(event, EndTrack):
-                        break
                     cumulative += delta
                     event.time.specification = sequence.specification
                     event.time.cumulative = cumulative
                     event.track = track
                     sequence.append(event)
+                    if isinstance(event, EndTrack):
+                        break
                 track += 1
 
         sequence.sort(key=sequence._meta_sort_key)
         sequence.sort(key=sequence._cumulative_sort_key)
-        to_delete = list()
-        programs = dict()
-        for index in range(len(sequence)):
-            event = sequence[index]
-            if isinstance(event, (SetTempo, SetTimeSignature)):
-                to_delete.append(index)
-                sequence.specification.add(event)
-            elif isinstance(event, ProgramChange):
-                to_delete.append(index)
-                programs[(event.track, event.channel)] = event.program
-            elif isinstance(event, ChannelEvent):
-                try:
-                    event.program = programs[(event.track, event.channel)]
-                except KeyError:
-                    event.program = Program()
-                    programs[(event.track, event.channel)] = event.program
-        for index in reversed(to_delete):
-            del sequence[index]
+        sequence.update()
         return sequence
 
     @property
@@ -1466,18 +1449,55 @@ class Sequence(list):
             event.time += time
         self.specification.offset(time)
 
-    def events(self):
-        event_list = list()
+    def update(self):
+        to_delete = list()
+        programs = dict()
+        self.specification = TimeSpecification(
+                division=self.specification.division)
+        for index in range(len(self)):
+            event = self[index]
+            if isinstance(event, (SetTempo, SetTimeSignature)):
+                to_delete.append(index)
+                self.specification.add(event)
+            elif isinstance(event, EndTrack):
+                to_delete.append(index)
+            elif isinstance(event, ProgramChange):
+                to_delete.append(index)
+                programs[(event.track, event.channel)] = event.program
+            elif isinstance(event, ChannelEvent):
+                try:
+                    event.program = programs[(event.track, event.channel)]
+                except KeyError:
+                    event.program = Program()
+                    programs[(event.track, event.channel)] = event.program
+        for index in reversed(to_delete):
+            del self[index]
+
+        to_add = list()
         programs = dict()
         for event in self:
+            event.time.specification = self.specification
             if isinstance(event, ChannelEvent):
                 program = programs.get((event.track, event.channel), None)
                 if event.program != program:
                     programs[(event.track, event.channel)] = event.program
-                    event_list.append(ProgramChange(time=event.time, 
+                    to_add.append(ProgramChange(time=event.time, 
                             program=event.program, track=event.track,
                             channel=event.channel))
-        return event_list
+        self.extend(to_add)
+        self.extend(self.specification.events(track=0))
+        self.sort(key=self._time_sort_key)
+        to_add = list()
+        for track in range(self.tracks):
+            events = self.track(track)
+            if len(events) < 1:
+                to_add.append(EndTrack(time=Time(
+                    specification=self.specification), track=track))
+            else:
+                to_add.append(EndTrack(time=events[-1].time, track=track))
+        self.extend(to_add)
+        self.sort()
+
 
     def sort(self, *, key=None, reverse=False):
         if key == None:
@@ -1495,6 +1515,8 @@ class Sequence(list):
             return 1
         elif isinstance(event, ProgramChange):
             return 2
+        elif isinstance(event, EndTrack):
+            return 4
         else:
             return 3
 
@@ -1521,11 +1543,9 @@ class Sequence(list):
         chunk = Chunk(header, id='MThd')
         array.extend(chunk.raw)
         
-        sequence = type(self)(self)
+        sequence = type(self)(self, specification=self.specification)
         sequence.sort()
-        sequence.extend(sequence.events())
-        sequence.extend(self.specification.events(track=0))
-        sequence.sort()
+        sequence.update()
         for track in range(tracks):
             events = sequence.track(track)
             chunk = Chunk(id='MTrk')
@@ -1535,8 +1555,6 @@ class Sequence(list):
                 chunk.extend(_var_int_bytes(delta))
                 chunk.extend(bytes(event))
                 cumulative = event.time.cumulative
-            chunk.extend(_var_int_bytes(0))
-            chunk.extend(bytes(EndTrack()))
             array.extend(chunk.raw)
         return bytes(array)
 
@@ -1688,7 +1706,7 @@ ChannelEvent._events = {
         0x80: NoteOff,
         0x90: NoteOn,
         0xa0: NoteAftertouch,
-        0xb0: Controller,
+        0xb0: ControlChange,
         0xc0: ProgramChange,
         0xd0: ChannelAftertouch,
         0xe0: PitchBend }
