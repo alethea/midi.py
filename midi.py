@@ -800,9 +800,10 @@ class ChannelEvent(Event):
         Create a new ChannelEvent object.
 
         In addition to the keywords inherited from Event, ChannelEvents also
-        accept the channel keyword.
+        accept the channel and program keywords.
         """
         self.channel = keywords.pop('channel', None)
+        self.program = keywords.pop('program', None)
         super().__init__(**keywords)
     
     @classmethod
@@ -813,7 +814,7 @@ class ChannelEvent(Event):
             type = status & 0xf0
             if type not in ChannelEvent._events:
                 raise MIDIError(
-                        'Encountered an unkown event: {status:X}.'.format(
+                        'Encountered an unknown event: {status:X}.'.format(
                         status=status))
             event = ChannelEvent._events[type]._parse(source)
             event.channel = channel
@@ -1378,16 +1379,24 @@ class Sequence(list):
                     sequence.append(event)
                 track += 1
 
-        def cumulative(event):
-            return event.time.cumulative
-        sequence.sort(key=cumulative)
-
+        sequence.sort(key=sequence._meta_sort_key)
+        sequence.sort(key=sequence._cumulative_sort_key)
         to_delete = list()
+        programs = dict()
         for index in range(len(sequence)):
             event = sequence[index]
             if isinstance(event, (SetTempo, SetTimeSignature)):
                 to_delete.append(index)
                 sequence.specification.add(event)
+            elif isinstance(event, ProgramChange):
+                to_delete.append(index)
+                programs[(event.track, event.channel)] = event.program
+            elif isinstance(event, ChannelEvent):
+                try:
+                    event.program = programs[(event.track, event.channel)]
+                except KeyError:
+                    event.program = Program()
+                    programs[(event.track, event.channel)] = event.program
         for index in reversed(to_delete):
             del sequence[index]
         return sequence
@@ -1457,26 +1466,49 @@ class Sequence(list):
             event.time += time
         self.specification.offset(time)
 
+    def events(self):
+        event_list = list()
+        programs = dict()
+        for event in self:
+            if isinstance(event, ChannelEvent):
+                program = programs.get((event.track, event.channel), None)
+                if event.program != program:
+                    programs[(event.track, event.channel)] = event.program
+                    event_list.append(ProgramChange(time=event.time, 
+                            program=event.program, track=event.track,
+                            channel=event.channel))
+        return event_list
+
     def sort(self, *, key=None, reverse=False):
         if key == None:
-            def meta(event):
-                if isinstance(event, SetTempo):
-                    return 0
-                elif isinstance(event, SetTimeSignature):
-                    return 1
-                elif isinstance(event, ProgramChange):
-                    return 2
-                else:
-                    return 3
-            def track(event):
-                return event.track
-            def time(event):
-                return event.time
-            super().sort(key=meta, reverse=reverse)
-            super().sort(key=track, reverse=reverse)
-            super().sort(key=time, reverse=reverse)
+            super().sort(key=self._meta_sort_key, reverse=reverse)
+            super().sort(key=self._track_sort_key, reverse=reverse)
+            super().sort(key=self._time_sort_key, reverse=reverse)
         else:
             super().sort(key=key, reverse=False)
+
+    @staticmethod
+    def _meta_sort_key(event):
+        if isinstance(event, SetTempo):
+            return 0
+        elif isinstance(event, SetTimeSignature):
+            return 1
+        elif isinstance(event, ProgramChange):
+            return 2
+        else:
+            return 3
+
+    @staticmethod
+    def _track_sort_key(event):
+        return event.track
+
+    @staticmethod
+    def _time_sort_key(event):
+        return event.time
+
+    @staticmethod
+    def _cumulative_sort_key(event):
+        return event.time.cumulative
 
     def __bytes__(self):
         """Bytes for writing to a MIDI file."""
@@ -1490,6 +1522,8 @@ class Sequence(list):
         array.extend(chunk.raw)
         
         sequence = type(self)(self)
+        sequence.sort()
+        sequence.extend(sequence.events())
         sequence.extend(self.specification.events(track=0))
         sequence.sort()
         for track in range(tracks):
