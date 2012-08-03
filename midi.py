@@ -1428,6 +1428,17 @@ class Sequence(list):
                 to_add.append(EndTrack(time=events[-1].time, track=track))
         self.extend(to_add)
         self.sort()
+        tempo = Tempo()
+        signature = TimeSignature()
+        for event in self:
+            if isinstance(event, SetTempo):
+                tempo = event.tempo
+            else:
+                event.tempo = tempo
+            if isinstance(event, SetTimeSignature):
+                signature = event.signature
+            else:
+                event.signature = signature
 
 
     def sort(self, *, key=None, reverse=False):
