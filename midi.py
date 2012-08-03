@@ -362,8 +362,12 @@ class Time:
     def __init__(self, value=0, *, specification=None, event=None):
         self._node = None
         self._cumulative = None
-        self._value = value
-        self.specification = specification
+        if isinstance(value, Time):
+            self._value = value.value
+            self.specification = value.specification
+        else:
+            self._value = value
+            self.specification = specification
         self.event = event
 
     vpt = 16
