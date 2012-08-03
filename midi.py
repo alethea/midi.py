@@ -1392,7 +1392,7 @@ class Sequence(list):
     def offset(self, time):
         for event in self:
             event.time += time
-        self.specification.offset(time)
+        self.update()
 
     def update(self):
         to_delete = list()
