@@ -436,11 +436,11 @@ class Time:
     @cumulative.setter
     def cumulative(self, cumulative):
         if self.specification == None:
-            self._cumulative = value
+            self._cumulative = cumulative
             return
         node = self.specification.cumulative(cumulative)
         if node == None:
-            self._cumulative = value
+            self._cumulative = cumulative
             return
         self._cumulative = None
         self._value = node.value 
@@ -553,8 +553,9 @@ class Time:
         return string
 
 class TimeNode:
-    def __init__(self, value=0, *, bar=1, beat=1, tick=0, triple=None,
-            cumulative=0, signature=None, tempo=None, specification=None):
+    def __init__(self, value=0, *, bar=1, beat=1, tick=0, time=None, 
+            triple=None, cumulative=0, signature=None, tempo=None,
+            specification=None):
         self.specification = specification
         self.value = value
         self.signature = signature
@@ -565,6 +566,10 @@ class TimeNode:
         if triple != None:
             self.triple = triple
         self.cumulative = cumulative
+        if time != None:
+            self.value = time.value
+            self.cumulative = time.cumulative
+            self.triple = time.triple
 
     @property
     def triple(self):
@@ -586,107 +591,49 @@ class TimeNode:
         return 'TimeNode({value})'.format(value=self.value)
 
 
-class TempoNode:
-    def __init__(self, value=0, tempo=None):
-        self.value = value
-        if isinstance(value, Time):
-            self.value = value.value
-        self.tempo = tempo
-
-    def __repr__(self):
-        return 'TempoNode({value}, {tempo!r})'.format(value=self.value,
-                tempo=self.tempo)
-
-
-class TimeSignatureNode:
-    def __init__(self, value=0.0, signature=None):
-        self.value = value
-        if isinstance(value, Time):
-            self.value = value.value
-        self.signature = signature
-
-    def __repr__(self):
-        return 'TimeSignatureNode({value}, {signature!r})'.format(
-                value=self.value, signature=self.signature)
-
-
-class TimeSpecification:
-    def __init__(self, *, division=None):
+class TimeSpecification(list):
+    def __init__(self, *, division=None, sequence=None):
+        super().__init__()
         self._division = division
-        self.tempos = list()
-        self.signatures = list()
-        self._cache = list()
+        self.sequence = sequence
         self._default_tempo = Tempo()
         self._default_signature = TimeSignature()
-        self.update()
     
     @property
     def division(self):
-        return self._division
+        if self.sequence == None:
+            return self._division
+        else:
+            return self.sequence.division
 
     @division.setter
     def division(self, value):
         self._division = value
-        self.update()
 
-    def add(self, item):
-        if isinstance(item, TempoNode):
-            self.tempos.append(item)
-        elif isinstance(item, SetTempo):
-            self.tempos.append(TempoNode(item.time.value, item.tempo))
-        elif isinstance(item, TimeSignatureNode):
-            self.signatures.append(item)
-        elif isinstance(item, SetTimeSignature):
-            self.signatures.append(TimeSignatureNode(item.time.value, 
-                item.signature))
-        self.update()
-
-    def remove(self, item):
-        for node in self.tempos + self.signatures:
-            if item is node:
-                del item
-                self.update()
-                return
-    
-    def merge(self, other):
-        if isinstance(other, TimeSpecification):
-            self.tempos.extend(other.tempos)
-            self.signatures.extend(other.signatures)
-            self.update()
-        else:
-            raise TypeError('Cannot merge \'TimeSpecification\' and {name!r}'\
-                    .format(name=type(other).__name__))
-    
-    def update(self):
-        self._clean(self.tempos, 'tempo')
-        self._clean(self.signatures, 'signature')
-        changes = self.tempos + self.signatures
-        changes.sort(key=self._value)
-
+    def update(self, events=list()):
+        if len(events) < 1 and self.sequence != None:
+            events = self.sequence
+        del self[:]
         tempo = self._default_tempo
         signature = self._default_signature
-        time = Time(specification=self)
-        self._cache = list()
-        self._cache.append(TimeNode(tempo=tempo, signature=signature,
+        self.append(TimeNode(tempo=tempo, signature=signature, 
             specification=self))
-        for change in changes:
-            if isinstance(change, TempoNode):
-                tempo = change.tempo
-            else:
-                signature = change.signature
-            time.value = change.value
-            node = TimeNode(value=time.value, triple=time.triple,
-                    cumulative=time.cumulative, tempo=tempo,
-                    signature=signature, specification=self)
-            if node.value == self._cache[-1].value:
-                self._cache[-1] = node
-            else:
-                self._cache.append(node)
+        for event in events:
+            if event.tempo != tempo or event.signature != signature:
+                self.append(TimeNode(time=event.time, tempo=event.tempo,
+                    signature=event.signature, specification=self))
+                tempo = event.tempo
+                signature = event.signature
 
-    def offset(self, time):
-        for node in self.tempos + self.signatures:
-            node.value += time.value
-        self.update()
+    def events(self, *, track=None):
+        events = list()
+        for node in self:
+            events.append(SetTempo(tempo=node.tempo, signature=node.signature,
+                track=track, time=Time(node.value, specification=self)))
+            events.append(SetTimeSignature(tempo=node.tempo,
+                signature=node.signature, track=track,
+                time=Time(node.value, specification=self)))
+        return events
 
     def time(self, value):
         return self._lookup(value.value, 'value')
@@ -696,7 +643,7 @@ class TimeSpecification:
 
     def triple(self, iterable):
         bar, beat, tick = iterable
-        for node in reversed(self._cache):
+        for node in reversed(self):
             if node.bar < bar:
                 return node
             elif node.bar == bar:
@@ -707,47 +654,18 @@ class TimeSpecification:
                         return node
         return None
 
-    def events(self, *, track=None):
-        event_list = list()
-        for node in self._cache:
-            time = Time(node.value, specification=self)
-            event_list.append(SetTempo(time=time, tempo=node.tempo, 
-                track=track))
-            event_list.append(SetTimeSignature(time=time,
-                signature=node.signature, track=track))
-        return event_list
-
-    @staticmethod
-    def _value(node):
-        return node.value
-
-    def _clean(self, nodes, attribute):
-        nodes.sort(key=self._value)
-        to_delete = list()
-        for index in range(1, len(nodes)):
-            if nodes[index].value == nodes[index - 1].value:
-                to_delete.append(index - 1)
-        for index in reversed(to_delete):
-            del nodes[index]
-
-        to_delete = list()
-        for index in range(1, len(nodes)):
-            if (nodes[index].__dict__[attribute] ==
-                    nodes[index - 1].__dict__[attribute]):
-                to_delete.append(index)
-        for index in reversed(to_delete):
-            del nodes[index]
-
     def _lookup(self, value, key):
-        for node in reversed(self._cache):
+        for node in reversed(self):
             if node.__dict__[key] <= value:
                 return node
         return None
 
+
 class Event:
     """Base class for MIDI events."""
 
-    def __init__(self, *, time=None, track=None, sequence=None):
+    def __init__(self, *, time=None, track=None, sequence=None, 
+            tempo=None, signature=None):
         """
         Create a new Event object.
 
@@ -760,10 +678,8 @@ class Event:
         self.time = time
         self.track = track
         self.sequence = sequence
-
-    time = None
-    track = None
-    sequence = None
+        self.tempo = tempo
+        self.signature = signature
 
     @staticmethod
     def parse(source):
@@ -1335,7 +1251,7 @@ class Sequence(list):
     objects.
     """
 
-    def __init__(self, events=list(), *, format=None, specification=None):
+    def __init__(self, events=list(), *, format=None, division=None):
         """
         Create a Sequence.
 
@@ -1344,9 +1260,10 @@ class Sequence(list):
         optional format and division keywords.
         """
         super().__init__(events)
+        self.specification = TimeSpecification(sequence=self)
         self._format = None
         self.format = format
-        self.specification = specification
+        self.division = division
 
     @staticmethod
     def parse(source):
@@ -1358,11 +1275,11 @@ class Sequence(list):
         if not isinstance(source, collections.Iterator):
             source = iter(source)
 
-        sequence = Sequence(specification=TimeSpecification())
+        sequence = Sequence()
         chunk = Chunk.parse(source, id='MThd')
         sequence.format = int.from_bytes(chunk[0:2], 'big')
         tracks = int.from_bytes(chunk[2:4], 'big')
-        sequence.specification.division = TimeDivision(chunk[4:6])
+        sequence.division = TimeDivision(chunk[4:6])
         track = 0
         for index in range(tracks):
             chunk = Chunk.parse(source)
@@ -1458,14 +1375,22 @@ class Sequence(list):
     def update(self):
         to_delete = list()
         programs = dict()
-        self.specification = TimeSpecification(
-                division=self.specification.division)
+        tempo = Tempo()
+        signature = TimeSignature()
         for index in range(len(self)):
             event = self[index]
-            if isinstance(event, (SetTempo, SetTimeSignature)):
+            if isinstance(event, SetTempo):
                 to_delete.append(index)
-                self.specification.add(event)
-            elif isinstance(event, EndTrack):
+                tempo = event.tempo
+            else:
+                event.tempo = tempo
+            if isinstance(event, SetTimeSignature):
+                to_delete.append(index)
+                signature = event.signature
+            else:
+                event.signature = signature
+
+            if isinstance(event, EndTrack):
                 to_delete.append(index)
             elif isinstance(event, ProgramChange):
                 to_delete.append(index)
@@ -1476,13 +1401,13 @@ class Sequence(list):
                 except KeyError:
                     event.program = Program()
                     programs[(event.track, event.channel)] = event.program
+        self.specification.update()
         for index in reversed(to_delete):
             del self[index]
 
         to_add = list()
         programs = dict()
         for event in self:
-            event.time.specification = self.specification
             if isinstance(event, ChannelEvent):
                 program = programs.get((event.track, event.channel), None)
                 if event.program != program:
@@ -1561,7 +1486,7 @@ class Sequence(list):
         chunk = Chunk(header, id='MThd')
         array.extend(chunk.raw)
         
-        sequence = type(self)(self, specification=self.specification)
+        sequence = type(self)(self, division=self.division)
         sequence.sort()
         sequence.update()
         for track in range(tracks):
