@@ -691,9 +691,6 @@ class TimeSpecification:
     def time(self, value):
         return self._lookup(value.value, 'value')
 
-    def value(self, value):
-        return self._lookup(value, 'value')
-
     def cumulative(self, value):
         return self._lookup(value, 'cumulative')
 
@@ -750,7 +747,7 @@ class TimeSpecification:
 class Event:
     """Base class for MIDI events."""
 
-    def __init__(self, *, time=None, track=None):
+    def __init__(self, *, time=None, track=None, sequence=None):
         """
         Create a new Event object.
 
@@ -762,9 +759,11 @@ class Event:
             time = Time()
         self.time = time
         self.track = track
+        self.sequence = sequence
 
-    track = None
     time = None
+    track = None
+    sequence = None
 
     @staticmethod
     def parse(source):
@@ -1513,6 +1512,18 @@ class Sequence(list):
             super().sort(key=self._time_sort_key, reverse=reverse)
         else:
             super().sort(key=key, reverse=False)
+
+    def append(self, event):
+        if isinstance(event, Event):
+            event.sequence = self
+            super().append(event)
+        else:
+            raise TypeError('Cannot append \'{type}\' to \'Sequence\''.format(
+                type=type(event).__name__))
+
+    def extend(self, events):
+        for event in events:
+            self.append(event)
 
     @staticmethod
     def _meta_sort_key(event):
