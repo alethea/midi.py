@@ -359,35 +359,39 @@ class Program:
 
 
 class Time:
-    def __init__(self, note=0.0, *, specification=None):
+    def __init__(self, value=0, *, specification=None):
         self._node = None
         self._cumulative = None
-        self._note = note
+        self._value = value
         self.specification = specification
 
-    @property
-    def note(self):
-        if self._note == 0 and self._cumulative != None:
-            self.cumulative = self._cumulative
-        return self._note
+    vpt = 16
+    vpqn = vpt * 480
+    vpn = vpqn * 4
 
-    @note.setter
-    def note(self, value):
-        self._note = value
+    @property
+    def value(self):
+        if self._value == 0 and self._cumulative != None:
+            self.cumulative = self._cumulative
+        return self._value
+
+    @value.setter
+    def value(self, value):
+        self._value = value
 
     @property
     def bar(self):
         node = self.node
         if node == None:
             return None
-        note = self.note - node.note
+        value = self.value - node.value
         npm = node.signature.numerator / node.signature.denominator
-        return math.floor(note / npm) + node.bar
+        return math.floor(value / (self.vpn * npm)) + node.bar
 
     @bar.setter
-    def bar(self, value):
+    def bar(self, bar):
         self._node = self._node_error('bar')
-        self.triple = (value, self.beat, self.tick)
+        self.triple = (bar, self.beat, self.tick)
         self._node = None
 
     @property
@@ -395,15 +399,15 @@ class Time:
         node = self.node
         if node == None:
             return None
-        note = self.note - node.note
-        npm = node.signature.numerator / node.signature.denominator
-        npb = node.signature.denominator
-        return math.floor((note % npm) * npb) + node.beat
+        value = self.value - node.value
+        vpm = self.vpn * node.signature.numerator / node.signature.denominator
+        vpb = self.vpn / node.signature.denominator
+        return math.floor((value % vpm) / vpb) + node.beat
 
     @beat.setter
-    def beat(self, value):
+    def beat(self, beat):
         self._node = self._node_error('beat')
-        self.triple = (self.bar, value, self.tick)
+        self.triple = (self.bar, beat, self.tick)
         self._node = None
 
     @property
@@ -411,14 +415,14 @@ class Time:
         node = self.node
         if node == None:
             return None
-        note = self.note - node.note
-        mod = note % (1 / node.signature.denominator)
-        return round(mod * 1920) + node.tick
+        value = self.value - node.value
+        mod = value % (self.vpn / node.signature.denominator)
+        return round(mod / self.vpt) + node.tick
 
     @tick.setter
-    def tick(self, value):
+    def tick(self, tick):
         self._node = self._node_error('tick')
-        self.triple = (self.bar, self.beat, value)
+        self.triple = (self.bar, self.beat, tick)
         self._node = None
 
     @property
@@ -426,20 +430,21 @@ class Time:
         node = self.node
         if node == None:
             return self._cumulative
-        note = self.note - node.note
-        return round(note * node.ppn + node.cumulative)
+        value = self.value - node.value
+        return round(value / node.vpp + node.cumulative)
 
     @cumulative.setter
-    def cumulative(self, value):
+    def cumulative(self, cumulative):
         if self.specification == None:
             self._cumulative = value
             return
-        node = self.specification.cumulative(value)
+        node = self.specification.cumulative(cumulative)
         if node == None:
             self._cumulative = value
             return
         self._cumulative = None
-        self._note = node.note + (value - node.cumulative) / node.ppn
+        self._value = node.value 
+        self._value += round((cumulative - node.cumulative) * node.vpp)
 
     @property
     def triple(self):
@@ -462,11 +467,12 @@ class Time:
             raise MIDIError(error)
         if tick >= 1920 / node.signature.denominator:
             raise MIDIError(error)
-        npm = node.signature.numerator / node.signature.denominator
-        self._note = node.note
-        self._note += (bar - node.bar) * npm
-        self._note += (beat - node.beat) / node.signature.denominator
-        self._note += (tick - node.tick) / 1920
+        npm = self.vpn * node.signature.numerator / node.signature.denominator
+        vpb = self.vpn / node.signature.denominator
+        self._value = node.value
+        self._value += round((bar - node.bar) * vpm)
+        self._value += round((beat - node.beat) * vpb)
+        self._value += (tick - node.tick) * self.vpt
 
     @property
     def node(self):
@@ -486,7 +492,7 @@ class Time:
 
     def _comparison(self, other, comparison):
         if isinstance(other, Time):
-            return comparison(self.note, other.note)
+            return comparison(self.value, other.value)
         elif isinstance(other, collections.Iterable):
             if len(other) == 3:
                 for item in other:
@@ -494,20 +500,20 @@ class Time:
                         return NotImplemented
                 time = Time(specification=self.specification)
                 time.triple = other
-                return comparison(self.note, time.note)
+                return comparison(self.value, time.value)
         return NotImplemented
     
     def _operation(self, other, operation):
         time = Time(specification=self.specification)
         if isinstance(other, Time):
-            time.note = operation(self.note, other.note)
+            time.value = operation(self.value, other.value)
         elif isinstance(other, collections.Iterable):
             if len(other) == 3:
                 for item in other:
                     if not isinstance(other, numbers.Number):
                         return NotImplemented
                 time.triple = other
-                time.note = operation(self.note, other.note)
+                time.value = operation(self.value, other.value)
         else:
             return NotImplemented
         return time
@@ -537,7 +543,7 @@ class Time:
         return self._operation(other, operator.sub)
 
     def __repr__(self):
-        return 'Time({note})'.format(note=self.note)
+        return 'Time({value})'.format(value=self.value)
 
     def __str__(self):
         self._node = self.specification.time(self)
@@ -547,10 +553,10 @@ class Time:
         return string
 
 class TimeNode:
-    def __init__(self, note=0.0, *, bar=1, beat=1, tick=0, triple=None,
+    def __init__(self, value=0, *, bar=1, beat=1, tick=0, triple=None,
             cumulative=0, signature=None, tempo=None, specification=None):
         self.specification = specification
-        self.note = note
+        self.value = value
         self.signature = signature
         self.tempo = tempo
         self.bar = bar
@@ -569,38 +575,39 @@ class TimeNode:
         self.bar, self.beat, self.tick = value
 
     @property
-    def ppn(self):
+    def vpp(self):
         if self.specification.division.mode == 'ppqn':
-            return self.specification.division.ppqn * 4
+            return Time.vpqn / self.specification.division.ppqn
         else:
-            return self.specification.division.pps / self.tempo.bps * 4
+            return Time.vpqn / (self.specification.division.pps / 
+                    self.tempo.bps)
 
     def __repr__(self):
-        return 'TimeNode({note})'.format(note=self.note)
+        return 'TimeNode({value})'.format(value=self.value)
 
 
 class TempoNode:
-    def __init__(self, note=0.0, tempo=None):
-        self.note = note
-        if isinstance(note, Time):
-            self.note = note.note
+    def __init__(self, value=0, tempo=None):
+        self.value = value
+        if isinstance(value, Time):
+            self.value = value.value
         self.tempo = tempo
 
     def __repr__(self):
-        return 'TempoNode({note}, {tempo!r})'.format(note=self.note,
+        return 'TempoNode({value}, {tempo!r})'.format(value=self.value,
                 tempo=self.tempo)
 
 
 class TimeSignatureNode:
-    def __init__(self, note=0.0, signature=None):
-        self.note = note
-        if isinstance(note, Time):
-            self.note = note.note
+    def __init__(self, value=0.0, signature=None):
+        self.value = value
+        if isinstance(value, Time):
+            self.value = value.value
         self.signature = signature
 
     def __repr__(self):
-        return 'TimeSignatureNode({note}, {signature!r})'.format(
-                note=self.note, signature=self.signature)
+        return 'TimeSignatureNode({value}, {signature!r})'.format(
+                value=self.value, signature=self.signature)
 
 
 class TimeSpecification:
@@ -626,11 +633,11 @@ class TimeSpecification:
         if isinstance(item, TempoNode):
             self.tempos.append(item)
         elif isinstance(item, SetTempo):
-            self.tempos.append(TempoNode(item.time.note, item.tempo))
+            self.tempos.append(TempoNode(item.time.value, item.tempo))
         elif isinstance(item, TimeSignatureNode):
             self.signatures.append(item)
         elif isinstance(item, SetTimeSignature):
-            self.signatures.append(TimeSignatureNode(item.time.note, 
+            self.signatures.append(TimeSignatureNode(item.time.value, 
                 item.signature))
         self.update()
 
@@ -654,7 +661,7 @@ class TimeSpecification:
         self._clean(self.tempos, 'tempo')
         self._clean(self.signatures, 'signature')
         changes = self.tempos + self.signatures
-        changes.sort(key=self._note)
+        changes.sort(key=self._value)
 
         tempo = self._default_tempo
         signature = self._default_signature
@@ -667,25 +674,25 @@ class TimeSpecification:
                 tempo = change.tempo
             else:
                 signature = change.signature
-            time.note = change.note
-            node = TimeNode(note=time.note, triple=time.triple,
+            time.value = change.value
+            node = TimeNode(value=time.value, triple=time.triple,
                     cumulative=time.cumulative, tempo=tempo,
                     signature=signature, specification=self)
-            if node.note == self._cache[-1].note:
+            if node.value == self._cache[-1].value:
                 self._cache[-1] = node
             else:
                 self._cache.append(node)
 
     def offset(self, time):
         for node in self.tempos + self.signatures:
-            node.note += time.note
+            node.value += time.value
         self.update()
 
     def time(self, value):
-        return self._lookup(value.note, 'note')
+        return self._lookup(value.value, 'value')
 
-    def note(self, value):
-        return self._lookup(value, 'note')
+    def value(self, value):
+        return self._lookup(value, 'value')
 
     def cumulative(self, value):
         return self._lookup(value, 'cumulative')
@@ -706,7 +713,7 @@ class TimeSpecification:
     def events(self, *, track=None):
         event_list = list()
         for node in self._cache:
-            time = Time(node.note, specification=self)
+            time = Time(node.value, specification=self)
             event_list.append(SetTempo(time=time, tempo=node.tempo, 
                 track=track))
             event_list.append(SetTimeSignature(time=time,
@@ -714,14 +721,14 @@ class TimeSpecification:
         return event_list
 
     @staticmethod
-    def _note(node):
-        return node.note
+    def _value(node):
+        return node.value
 
     def _clean(self, nodes, attribute):
-        nodes.sort(key=self._note)
+        nodes.sort(key=self._value)
         to_delete = list()
         for index in range(1, len(nodes)):
-            if nodes[index].note == nodes[index - 1].note:
+            if nodes[index].value == nodes[index - 1].value:
                 to_delete.append(index - 1)
         for index in reversed(to_delete):
             del nodes[index]
