@@ -479,7 +479,7 @@ class Time:
             raise MIDIError(error)
         if tick >= 1920 / node.signature.denominator:
             raise MIDIError(error)
-        npm = self.vpn * node.signature.numerator / node.signature.denominator
+        vpm = self.vpn * node.signature.numerator / node.signature.denominator
         vpb = self.vpn / node.signature.denominator
         self._value = node.value
         self._value += round((bar - node.bar) * vpm)
@@ -1434,7 +1434,7 @@ class Sequence(list):
                 program = programs.get((event.track, event.channel), None)
                 if event.program != program:
                     programs[(event.track, event.channel)] = event.program
-                    to_add.append(ProgramChange(time=event.time, 
+                    to_add.append(ProgramChange(time=Time(event.time.value), 
                             program=event.program, track=event.track,
                             channel=event.channel))
         self.extend(to_add)
@@ -1444,10 +1444,10 @@ class Sequence(list):
         for track in range(self.tracks):
             events = self.track(track)
             if len(events) < 1:
-                to_add.append(EndTrack(time=Time(
-                    specification=self.specification), track=track))
+                to_add.append(EndTrack(time=Time(), track=track))
             else:
-                to_add.append(EndTrack(time=events[-1].time, track=track))
+                to_add.append(EndTrack(time=Time(events[-1].time.value), 
+                    track=track))
         self.extend(to_add)
         self.sort()
         tempo = Tempo()
