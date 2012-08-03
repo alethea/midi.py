@@ -359,15 +359,27 @@ class Program:
 
 
 class Time:
-    def __init__(self, value=0, *, specification=None):
+    def __init__(self, value=0, *, specification=None, event=None):
         self._node = None
         self._cumulative = None
         self._value = value
         self.specification = specification
+        self.event = event
 
     vpt = 16
     vpqn = vpt * 480
     vpn = vpqn * 4
+    
+    @property
+    def specification(self):
+        if self.event == None:
+            return self._specification
+        else:
+            return self.event.sequence.specification
+
+    @specification.setter
+    def specification(self, specification):
+        self._specification = specification
 
     @property
     def value(self):
@@ -680,6 +692,15 @@ class Event:
         self.sequence = sequence
         self.tempo = tempo
         self.signature = signature
+
+    @property
+    def time(self):
+        return self._time
+
+    @time.setter
+    def time(self, value):
+        self._time = value
+        self._time.event = self
 
     @staticmethod
     def parse(source):
@@ -1293,6 +1314,7 @@ class Sequence(list):
                     except StopIteration:
                         raise MIDIError(
                             'Incomplete track. End Track event not found.')
+                    event.sequence = sequence
                     cumulative += delta
                     event.time.specification = sequence.specification
                     event.time.cumulative = cumulative
@@ -1497,11 +1519,10 @@ class Sequence(list):
         chunk = Chunk(header, id='MThd')
         array.extend(chunk.raw)
         
-        sequence = type(self)(self, division=self.division)
-        sequence.sort()
-        sequence.update()
+        self.sort()
+        self.update()
         for track in range(tracks):
-            events = sequence.track(track)
+            events = self.track(track)
             chunk = Chunk(id='MTrk')
             cumulative = 0
             for event in events:
