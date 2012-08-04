@@ -624,12 +624,13 @@ class TimeSpecification(list):
             if event.tempo != tempo or event.signature != signature:
                 node = TimeNode(time=event.time, tempo=event.tempo,
                         signature=event.signature, specification=self)
-                tempo = event.tempo
-                signature = event.signature
                 if event.time != time:
                     self.append(node)
                 else:
                     self[-1] = node
+                tempo = event.tempo
+                signature = event.signature
+                time = event.time
 
     def events(self, *, track=None):
         events = list()
