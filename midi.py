@@ -360,7 +360,6 @@ class Program:
 
 class Time:
     def __init__(self, value=0, *, specification=None, event=None):
-        self._node = None
         self._cumulative = None
         if isinstance(value, Time):
             self._value = value.value
@@ -396,50 +395,39 @@ class Time:
         self._value = value
 
     @property
+    def note(self):
+        return self.value / self.vpn
+
+    @note.setter
+    def note(self, note):
+        self.value = round(note * self.vpn)
+
+    @property
     def bar(self):
-        node = self.node
-        if node == None:
-            return None
-        value = self.value - node.value
-        npm = node.signature.numerator / node.signature.denominator
-        return math.floor(value / (self.vpn * npm)) + node.bar
+        return self.triple[0]
 
     @bar.setter
     def bar(self, bar):
-        self._node = self._node_error('bar')
-        self.triple = (bar, self.beat, self.tick)
-        self._node = None
+        triple = self.triple
+        self.triple = (bar, triple[1], triple[2])
 
     @property
     def beat(self):
-        node = self.node
-        if node == None:
-            return None
-        value = self.value - node.value
-        vpm = self.vpn * node.signature.numerator / node.signature.denominator
-        vpb = self.vpn / node.signature.denominator
-        return math.floor((value % vpm) / vpb) + node.beat
+        return self.triple[1]
 
     @beat.setter
     def beat(self, beat):
-        self._node = self._node_error('beat')
-        self.triple = (self.bar, beat, self.tick)
-        self._node = None
+        triple = self.triple
+        self.triple = (triple[0], beat, triple[2])
 
     @property
     def tick(self):
-        node = self.node
-        if node == None:
-            return None
-        value = self.value - node.value
-        mod = value % (self.vpn / node.signature.denominator)
-        return round(mod / self.vpt) + node.tick
+        return self.triple[2]
 
     @tick.setter
     def tick(self, tick):
-        self._node = self._node_error('tick')
-        self.triple = (self.bar, self.beat, tick)
-        self._node = None
+        triple = self.triple
+        self.triple = (triple[0], triple[1], tick)
 
     @property
     def cumulative(self):
@@ -464,10 +452,18 @@ class Time:
 
     @property
     def triple(self):
-        self._node = self.specification.time(self)
-        triple_tuple = (self.bar, self.beat, self.tick)
-        self._node = None
-        return triple_tuple
+        node = self.node
+        if node == None:
+            return (None, None, None)
+        value = self.value - node.value
+        bar, beat, tick = node.triple
+        tpb = 1920 / node.signature.denominator
+        tick += value / self.vpt
+        beat += round(tick // tpb) - 1
+        tick = round(tick % tpb)
+        bar += beat // node.signature.numerator
+        beat = beat % node.signature.numerator + 1
+        return (bar, beat, tick)
 
     @triple.setter
     def triple(self, value):
@@ -492,19 +488,9 @@ class Time:
 
     @property
     def node(self):
-        if self._node != None:
-            return self._node
         if self.specification == None:
             return None
         return self.specification.time(self)
-
-    def _node_error(self, attribute):
-        node = self.node
-        if node != None:
-            return node
-        raise MIDIError(
-                'Cannot set {attribute} without a time specification.'.format(
-                attribute=attribute))
 
     def _comparison(self, other, comparison):
         if isinstance(other, Time):
@@ -563,8 +549,7 @@ class Time:
 
     def __str__(self):
         self._node = self.specification.time(self)
-        string = '{bar}|{beat}|{tick:03}'.format(bar=self.bar,
-                beat=self.beat, tick=self.tick)
+        string = '{0}|{1}|{2:03}'.format(*self.triple)
         self._node = None
         return string
 
