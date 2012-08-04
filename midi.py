@@ -634,21 +634,33 @@ class TimeSpecification(list):
         signature = self._default_signature
         self.append(TimeNode(tempo=tempo, signature=signature, 
             specification=self))
+        time = Time(specification=self)
         for event in events:
             if event.tempo != tempo or event.signature != signature:
-                self.append(TimeNode(time=event.time, tempo=event.tempo,
-                    signature=event.signature, specification=self))
+                node = TimeNode(time=event.time, tempo=event.tempo,
+                        signature=event.signature, specification=self)
                 tempo = event.tempo
                 signature = event.signature
+                if event.time != time:
+                    self.append(node)
+                else:
+                    self[-1] = node
 
     def events(self, *, track=None):
         events = list()
+        tempo = None
+        signature = None
         for node in self:
-            events.append(SetTempo(tempo=node.tempo, signature=node.signature,
-                track=track, time=Time(node.value, specification=self)))
-            events.append(SetTimeSignature(tempo=node.tempo,
-                signature=node.signature, track=track,
-                time=Time(node.value, specification=self)))
+            if node.tempo != tempo:
+                events.append(SetTempo(tempo=node.tempo, 
+                        signature=node.signature, track=track, 
+                        time=Time(node.value, specification=self)))
+            if node.signature != signature:
+                events.append(SetTimeSignature(tempo=node.tempo, 
+                        signature=node.signature, track=track, 
+                        time=Time(node.value, specification=self)))
+            tempo = node.tempo
+            signature = node.signature
         return events
 
     def time(self, value):
