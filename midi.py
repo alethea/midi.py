@@ -33,9 +33,9 @@ class Tempo:
         Create a new Tempo object.
 
         If called without arguments, the tempo defaults to 120 BPM.
-        
+
         Otherwise, if passed a single number, assume it is the tempo in beats
-        per minute. If passed a bytes object, assume it is the tempo 
+        per minute. If passed a bytes object, assume it is the tempo
         specification from a MIDI file in microseconds per quarter note.
 
         Beats per minute or microseconds per quarter note can be set
@@ -45,7 +45,7 @@ class Tempo:
             self.bpm = bpm
         else:
             self.mpqn = int.from_bytes(bpm, 'big')
-        if mpqn != None:
+        if mpqn is not None:
             self.mpqn = mpqn
 
     @property
@@ -105,7 +105,7 @@ class Tempo:
 class TimeDivision:
     """
     Represents the time division field from a MIDI file header.
-    
+
     MIDI files will either express the time division in pulses per quarter
     note (PPQN) or pulses per second (PPS), based on SMPTE subframes. The mode
     attribute will either be 'ppqn' or 'pps'. In PPQN mode, the ppqn attribute
@@ -125,7 +125,7 @@ class TimeDivision:
         self.mode = 'ppqn'
         self.pps = None
         self.ppqn = None
-        if ppqn == None:
+        if ppqn is None:
             self.frames = frames
             self.subframes = subframes
         elif isinstance(ppqn, numbers.Number):
@@ -158,7 +158,7 @@ class TimeDivision:
             self._frames = 29
         else:
             self._frames = value
-        if self.subframes != None:
+        if self.subframes is not None:
             self.pps = value * self.subframes
             self.mode = 'pps'
 
@@ -178,7 +178,7 @@ class TimeDivision:
     @subframes.setter
     def subframes(self, value):
         self._subframes = value
-        if self.frames != None:
+        if self.frames is not None:
             self.pps = value * self.frames
             self.mode = 'pps'
 
@@ -212,10 +212,10 @@ class TimeDivision:
 class TimeSignature:
     """
     Represents a MIDI time signature.
-    
+
     The numerator and denominator of a time signature, e.g.: 4/4, are
-    available through the numerator and denominator attributes. 
-    
+    available through the numerator and denominator attributes.
+
     MIDI time signatures also store metronome information, accessible as
     fractional ticks per beat through the metronome attribute.
 
@@ -230,7 +230,7 @@ class TimeSignature:
         """
         Create a new TimeSignature object.
 
-        Arguments can be positional or keywords: numerator, denominator, 
+        Arguments can be positional or keywords: numerator, denominator,
         metronome, clock. If not specified defaults to 4, 4, 1.0, 8.
 
         If given a single bytes-like object, assume it's from the body of a
@@ -247,7 +247,7 @@ class TimeSignature:
             self.denominator = denominator
             self.metronome = metronome
             self.clock = clock
-    
+
     def __eq__(self, other):
         if isinstance(other, TimeSignature):
             return (self.numerator == other.numerator and
@@ -266,12 +266,13 @@ class TimeSignature:
 
     def __str__(self):
         return '{numerator}/{denominator}'.format(
-                numerator=self.numerator, denominator=self.denominator)
+            numerator=self.numerator,
+            denominator=self.denominator)
 
     def __repr__(self):
-        return ('TimeSignature({num}, {denom}, {metro}, {clock})'
-                .format(num=self.numerator, denom=self.denominator,
-                        metro=self.metronome, clock=self.clock))
+        return ('TimeSignature({num}, {denom}, {metro}, {clock})'.format(
+            num=self.numerator, denom=self.denominator,
+            metro=self.metronome, clock=self.clock))
 
     def __bytes__(self):
         """4 bytes, suitable for the body of a SetTimeSignature event."""
@@ -289,8 +290,8 @@ class Program:
 
     MIDI stores instrument information as a number 1-128. There is a standard
     set of instruments, but synthesizers may implement their own set. The
-    descriptive name of the instrument, e.g.: 'Acoustic Grand Piano', is 
-    accessible from the desc attribute. A unique string describing the 
+    descriptive name of the instrument, e.g.: 'Acoustic Grand Piano', is
+    accessible from the desc attribute. A unique string describing the
     instrument, e.g.: 'AcousticGrandPiano', is accessible by the name
     attribute. Lists of valid strings are available through the names and
     descs attributes.
@@ -301,20 +302,20 @@ class Program:
         Create a new Program object.
 
         Can be initialized from an integer program number, a program byte from
-        a MIDI file, a name string (in any capitalization scheme), or a 
+        a MIDI file, a name string (in any capitalization scheme), or a
         description string.
         """
-        if source == None:
+        if source is None:
             self.number = 1
         elif isinstance(source, numbers.Number):
             self.number = int(source)
         elif isinstance(source, str):
             self.number = Program._lower_numbers.get(source.lower(), None)
-            if self.number == None:
+            if self.number is None:
                 self.number = Program._desc_numbers.get(source, None)
         else:
             self.number = int.from_bytes(source, 'big') + 1
-        if self.number == None or self.number < 1 or self.number > 128:
+        if self.number is None or self.number < 1 or self.number > 128:
             raise MIDIError('MIDI Program \'{source}\' is undefined.'.format(
                 source=source))
 
@@ -372,10 +373,10 @@ class Time:
     vpt = 16
     vpqn = vpt * 480
     vpn = vpqn * 4
-    
+
     @property
     def specification(self):
-        if self.event == None:
+        if self.event is None:
             return self._specification
         else:
             return self.event.sequence.specification
@@ -386,7 +387,7 @@ class Time:
 
     @property
     def value(self):
-        if self._value == 0 and self._cumulative != None:
+        if self._value == 0 and self._cumulative is not None:
             self.cumulative = self._cumulative
         return self._value
 
@@ -432,28 +433,28 @@ class Time:
     @property
     def cumulative(self):
         node = self.node
-        if node == None:
+        if node is None:
             return self._cumulative
         value = self.value - node.value
         return round(value / node.vpp + node.cumulative)
 
     @cumulative.setter
     def cumulative(self, cumulative):
-        if self.specification == None:
+        if self.specification is None:
             self._cumulative = cumulative
             return
         node = self.specification.cumulative(cumulative)
-        if node == None:
+        if node is None:
             self._cumulative = cumulative
             return
         self._cumulative = None
-        self._value = node.value 
+        self._value = node.value
         self._value += round((cumulative - node.cumulative) * node.vpp)
 
     @property
     def triple(self):
         node = self.node
-        if node == None:
+        if node is None:
             return (None, None, None)
         value = self.value - node.value
         bar, beat, tick = node.triple
@@ -472,7 +473,7 @@ class Time:
                 bar=bar, beat=beat, tick=tick)
         if bar < 1 or beat < 1 or tick < 0:
             raise MIDIError(error)
-        if self.specification == None:
+        if self.specification is None:
             raise MIDIError('Cannot set triple without a time specification.')
         node = self.specification.triple(value)
         if beat > node.signature.numerator:
@@ -488,7 +489,7 @@ class Time:
 
     @property
     def node(self):
-        if self.specification == None:
+        if self.specification is None:
             return None
         return self.specification.time(self)
 
@@ -504,7 +505,7 @@ class Time:
                 time.triple = other
                 return comparison(self.value, time.value)
         return NotImplemented
-    
+
     def _operation(self, other, operation):
         time = Time(specification=self.specification)
         if isinstance(other, Time):
@@ -519,7 +520,7 @@ class Time:
         else:
             return NotImplemented
         return time
-    
+
     def __lt__(self, other):
         return self._comparison(other, operator.lt)
 
@@ -553,10 +554,11 @@ class Time:
         self._node = None
         return string
 
+
 class TimeNode:
-    def __init__(self, value=0, *, bar=1, beat=1, tick=0, time=None, 
-            triple=None, cumulative=0, signature=None, tempo=None,
-            specification=None):
+    def __init__(self, value=0, *, bar=1, beat=1, tick=0, time=None,
+                 triple=None, cumulative=0, signature=None, tempo=None,
+                 specification=None):
         self.specification = specification
         self.value = value
         self.signature = signature
@@ -564,10 +566,10 @@ class TimeNode:
         self.bar = bar
         self.beat = beat
         self.tick = tick
-        if triple != None:
+        if triple is not None:
             self.triple = triple
         self.cumulative = cumulative
-        if time != None:
+        if time is not None:
             self.value = time.value
             self.cumulative = time.cumulative
             self.triple = time.triple
@@ -585,8 +587,8 @@ class TimeNode:
         if self.specification.division.mode == 'ppqn':
             return Time.vpqn / self.specification.division.ppqn
         else:
-            return Time.vpqn / (self.specification.division.pps / 
-                    self.tempo.bps)
+            return Time.vpqn / (self.specification.division.pps /
+                                self.tempo.bps)
 
     def __repr__(self):
         return 'TimeNode({value})'.format(value=self.value)
@@ -599,10 +601,10 @@ class TimeSpecification(list):
         self.sequence = sequence
         self._default_tempo = Tempo()
         self._default_signature = TimeSignature()
-    
+
     @property
     def division(self):
-        if self.sequence == None:
+        if self.sequence is None:
             return self._division
         else:
             return self.sequence.division
@@ -612,18 +614,18 @@ class TimeSpecification(list):
         self._division = value
 
     def update(self, events=list()):
-        if len(events) < 1 and self.sequence != None:
+        if len(events) < 1 and self.sequence is not None:
             events = self.sequence
         del self[:]
         tempo = self._default_tempo
         signature = self._default_signature
-        self.append(TimeNode(tempo=tempo, signature=signature, 
-            specification=self))
+        self.append(TimeNode(tempo=tempo, signature=signature,
+                             specification=self))
         time = Time(specification=self)
         for event in events:
             if event.tempo != tempo or event.signature != signature:
                 node = TimeNode(time=event.time, tempo=event.tempo,
-                        signature=event.signature, specification=self)
+                                signature=event.signature, specification=self)
                 if event.time != time:
                     self.append(node)
                 else:
@@ -638,13 +640,13 @@ class TimeSpecification(list):
         signature = None
         for node in self:
             if node.tempo != tempo:
-                events.append(SetTempo(tempo=node.tempo, 
-                        signature=node.signature, track=track, 
-                        time=Time(node.value, specification=self)))
+                events.append(SetTempo(
+                    tempo=node.tempo, signature=node.signature, track=track,
+                    time=Time(node.value, specification=self)))
             if node.signature != signature:
-                events.append(SetTimeSignature(tempo=node.tempo, 
-                        signature=node.signature, track=track, 
-                        time=Time(node.value, specification=self)))
+                events.append(SetTimeSignature(
+                    tempo=node.tempo, signature=node.signature, track=track,
+                    time=Time(node.value, specification=self)))
             tempo = node.tempo
             signature = node.signature
         return events
@@ -678,8 +680,8 @@ class TimeSpecification(list):
 class Event:
     """Base class for MIDI events."""
 
-    def __init__(self, *, time=None, track=None, sequence=None, 
-            tempo=None, signature=None):
+    def __init__(self, *, time=None, track=None, sequence=None,
+                 tempo=None, signature=None):
         """
         Create a new Event object.
 
@@ -687,7 +689,7 @@ class Event:
         keyword arguments Delta supports can be passed to the constructor,
         in addition to the time and track keywords.
         """
-        if time == None:
+        if time is None:
             time = Time()
         self.time = time
         self.track = track
@@ -750,7 +752,7 @@ class ChannelEvent(Event):
         self.channel = keywords.pop('channel', None)
         self.program = keywords.pop('program', None)
         super().__init__(**keywords)
-    
+
     @classmethod
     def _parse(cls, source=None, status=None):
         """Delegate parser method. Called by Event.parse."""
@@ -759,8 +761,8 @@ class ChannelEvent(Event):
             type = status & 0xf0
             if type not in ChannelEvent._events:
                 raise MIDIError(
-                        'Encountered an unknown event: {status:X}.'.format(
-                        status=status))
+                    'Encountered an unknown event: {status:X}.'.format(
+                    status=status))
             event = ChannelEvent._events[type]._parse(source)
             event.channel = channel
             return event
@@ -781,10 +783,10 @@ class ChannelEvent(Event):
         parameters = self._parameters()
         if len(parameters) == 1:
             return '{name}({value})'.format(
-                    name=type(self).__name__, value=parameters[0])
+                name=type(self).__name__, value=parameters[0])
         else:
             return '{name}{parameters}'.format(
-                    name=type(self).__name__, parameters=tuple(parameters))
+                name=type(self).__name__, parameters=tuple(parameters))
 
     def __bytes__(self):
         """Bytes, including delta time, for writing to a MIDI file."""
@@ -797,7 +799,7 @@ class ChannelEvent(Event):
 class NoteOff(ChannelEvent):
     """
     Indicates a key release.
-    
+
     Available attributes are note and velocity.
     """
 
@@ -816,7 +818,7 @@ class NoteOff(ChannelEvent):
 class NoteOn(ChannelEvent):
     """
     Indicates a key press.
-    
+
     Available attributes are note and velocity.
     """
 
@@ -835,7 +837,7 @@ class NoteOn(ChannelEvent):
 class NoteAftertouch(ChannelEvent):
     """
     Indicates a change in pressure on a pressed key.
-    
+
     Available attributes are note and amount.
     """
 
@@ -868,7 +870,7 @@ class ControlChange(ChannelEvent):
 
     def _parameters(self):
         return (self.controller, self.value)
-    
+
 
 class ProgramChange(ChannelEvent):
     """
@@ -880,12 +882,12 @@ class ProgramChange(ChannelEvent):
 
     def __init__(self, program=None, **keywords):
         """
-        Create a ProgramChange object. 
+        Create a ProgramChange object.
 
         Accepts a program number, a Program object, or bytes as an argument.
         """
         super().__init__(**keywords)
-        if isinstance(program, Program) or program == None:
+        if isinstance(program, Program) or program is None:
             self.program = program
         elif isinstance(program, numbers.Number):
             self.program = Program(program + 1)
@@ -901,8 +903,8 @@ class ProgramChange(ChannelEvent):
         return (self.program.number - 1,)
 
     def __repr__(self):
-        return '{type}({program!r})'.format(type=type(self).__name__, 
-                program=self.program)
+        return '{type}({program!r})'.format(
+            type=type(self).__name__, program=self.program)
 
 
 class ChannelAftertouch(ChannelEvent):
@@ -950,8 +952,8 @@ class PitchBend(ChannelEvent):
         return (value & 0x7f, (value >> 7) & 0x7f)
 
     def __repr__(self):
-        return '{type}({value})'.format(type=type(self).__name__, 
-                vale=self.value)
+        return '{type}({value})'.format(
+            type=type(self).__name__, value=self.value)
 
 
 class MetaEvent(Event):
@@ -976,7 +978,7 @@ class MetaEvent(Event):
             for i in range(length):
                 data.append(next(source))
             return cls(data)
-    
+
     status = 0xff
 
     @property
@@ -986,7 +988,7 @@ class MetaEvent(Event):
 
     def __repr__(self):
         return '{name}({data!r})'.format(
-                name=type(self).__name__, data=self._bytes())
+            name=type(self).__name__, data=self._bytes())
 
     def __bytes__(self):
         """Bytes, including delta time, for writing to a MIDI file."""
@@ -1017,7 +1019,7 @@ class TextMetaEvent(MetaEvent):
 
     def __repr__(self):
         return '{name}({text!r})'.format(
-                name=type(self).__name__, text=self.text)
+            name=type(self).__name__, text=self.text)
 
     def _bytes(self):
         """Delegate bytes method, called by MetaEvent.__bytes__."""
@@ -1039,7 +1041,7 @@ class SequenceNumber(MetaEvent):
 
     def __repr__(self):
         return '{name}({number})'.format(
-                name=type(self).__name__, number=self.number)
+            name=type(self).__name__, number=self.number)
 
     def _bytes(self):
         """Delegate bytes method, called by MetaEvent.__bytes__."""
@@ -1077,7 +1079,7 @@ class CuePoint(TextMetaEvent):
 class ChannelPrefix(MetaEvent):
     """
     Indicate that the following meta events affect a specific channel.
-    
+
     Used primarily with ProgramName meta events. The channel is available by
     the channel attribute.
     """
@@ -1094,7 +1096,7 @@ class ChannelPrefix(MetaEvent):
 
     def __repr__(self):
         return '{name}({channel})'.format(
-                name=type(self).__name__, channel=self.channel)
+            name=type(self).__name__, channel=self.channel)
 
     def _bytes(self):
         """Delegate bytes method, called by MetaEvent.__bytes__."""
@@ -1104,7 +1106,7 @@ class ChannelPrefix(MetaEvent):
 class EndTrack(MetaEvent):
     """
     Indicates the end of a track.
-    
+
     Sequence automatically tracks EndTrack events, so most applications will
     never need to interact with them.
     """
@@ -1147,7 +1149,7 @@ class SetTempo(MetaEvent):
 
     def __repr__(self):
         return '{name}({tempo!r})'.format(
-                name=type(self).__name__, tempo=self.tempo)
+            name=type(self).__name__, tempo=self.tempo)
 
     def _bytes(self):
         """Delegate bytes method, called by MetaEvent.__bytes__."""
@@ -1195,7 +1197,7 @@ class SetTimeSignature(MetaEvent):
 
     def __repr__(self):
         return '{name}({signature!r})'.format(
-                name=type(self).__name__, signature=self.signature)
+            name=type(self).__name__, signature=self.signature)
 
     def _bytes(self):
         """Delegate bytes method, called by MetaEvent.__bytes__."""
@@ -1225,7 +1227,7 @@ class SetKeySignature(MetaEvent):
 
     def __repr__(self):
         return '{name}({key}, {scale})'.format(
-                name=type(self).__name__, key=self.key, scale=self.scale)
+            name=type(self).__name__, key=self.key, scale=self.scale)
 
     def _bytes(self):
         """Delegate bytes method, called by MetaEvent.__bytes__."""
@@ -1267,7 +1269,7 @@ class SysExEvent(Event):
 class Sequence(list):
     """
     Represents a MIDI sequence as a chronological list of events.
-    
+
     Instead of using the internal organization of a MIDI file as a set of
     tracks with delta times in between events, the Sequence object organizes
     events in chronological order, making the track an attribute of the event
@@ -1336,7 +1338,7 @@ class Sequence(list):
         """
         Access the format of the sequence.
 
-        Setting the format of a sequence will attempt to convert it. If the 
+        Setting the format of a sequence will attempt to convert it. If the
         conversion fails, it will raise a MIDIError. Currently, the only
         supported conversion is 0 to 1.
         """
@@ -1344,13 +1346,13 @@ class Sequence(list):
 
     @format.setter
     def format(self, value):
-        if self._format == None or len(self) == 0:
+        if self._format is None or len(self) == 0:
             self._format = value
         elif self._format == 0 and value == 1:
             if self.tracks != 1:
                 raise MIDIError(
-                        'Invalid format 0 sequence, contains {n} tracks.'\
-                        .format(n=len(self)))
+                    'Invalid format 0 sequence, contains {n} tracks.'.format(
+                    n=len(self)))
             self._format = 1
             for event in self:
                 if isinstance(event, MetaEvent):
@@ -1359,8 +1361,8 @@ class Sequence(list):
                     event.track = 1
         elif self._format != value:
             raise MIDIError(
-                    'Cannot convert a format {0} sequence to format {1}.'\
-                    .format(self._format, value))
+                'Cannot convert a format {0} sequence to format {1}.'.format(
+                self._format, value))
 
     @format.deleter
     def format(self):
@@ -1436,9 +1438,9 @@ class Sequence(list):
                 program = programs.get((event.track, event.channel), None)
                 if event.program != program:
                     programs[(event.track, event.channel)] = event.program
-                    to_add.append(ProgramChange(time=Time(event.time.value), 
-                            program=event.program, track=event.track,
-                            channel=event.channel))
+                    to_add.append(ProgramChange(
+                        time=Time(event.time.value), program=event.program,
+                        track=event.track, channel=event.channel))
         self.extend(to_add)
         self.extend(self.specification.events(track=0))
         self.sort(key=self._time_sort_key)
@@ -1448,8 +1450,8 @@ class Sequence(list):
             if len(events) < 1:
                 to_add.append(EndTrack(time=Time(), track=track))
             else:
-                to_add.append(EndTrack(time=Time(events[-1].time.value), 
-                    track=track))
+                to_add.append(EndTrack(
+                    time=Time(events[-1].time.value), track=track))
         self.extend(to_add)
         self.sort()
         tempo = Tempo()
@@ -1464,9 +1466,8 @@ class Sequence(list):
             else:
                 event.signature = signature
 
-
     def sort(self, *, key=None, reverse=False):
-        if key == None:
+        if key is None:
             super().sort(key=self._meta_sort_key, reverse=reverse)
             super().sort(key=self._track_sort_key, reverse=reverse)
             super().sort(key=self._time_sort_key, reverse=reverse)
@@ -1520,7 +1521,7 @@ class Sequence(list):
         header.extend(bytes(self.specification.division))
         chunk = Chunk(header, id='MThd')
         array.extend(chunk.raw)
-        
+
         self.sort()
         self.update()
         for track in range(tracks):
@@ -1547,8 +1548,8 @@ class Chunk(bytearray):
     def __init__(self, data=bytearray(), *, id=None):
         """
         Create a Chunk object.
-        
-        Can be initialized from a bytes object, and the chunk ID can be 
+
+        Can be initialized from a bytes object, and the chunk ID can be
         specified with the optional id keyword.
         """
         super().__init__(data)
@@ -1572,11 +1573,11 @@ class Chunk(bytearray):
             except StopIteration:
                 if mode != 'data':
                     raise MIDIError(
-                            'Incomplete chunk header. Read {got}/8 bytes.'\
-                            .format(got=len(chunk)))
+                        'Incomplete chunk header. Read {got}/8 bytes.'.format(
+                        got=len(chunk)))
                 raise MIDIError(
-                        'Incomplete {id} chunk. Read {got}/{total} bytes.'\
-                        .format(got=len(chunk), total=length, id=chunk.id))
+                    'Incomplete {id} chunk. Read {got}/{total} bytes.'.format(
+                    got=len(chunk), total=length, id=chunk.id))
 
             if isinstance(item, int):
                 chunk.append(item)
@@ -1597,7 +1598,7 @@ class Chunk(bytearray):
             if mode == 'data' and len(chunk) >= length:
                 if isinstance(source, io.IOBase):
                     source.seek(start + length)
-                del chunk[length:] 
+                del chunk[length:]
                 del chunk[:8]
                 return chunk
 
@@ -1608,7 +1609,7 @@ class Chunk(bytearray):
         value.extend(len(self).to_bytes(4, 'big'))
         value.extend(self)
         return value
-    
+
     @raw.setter
     def raw(self, value):
         self.id = str(value, 'iso8859-1')
@@ -1623,8 +1624,8 @@ class Chunk(bytearray):
         return str(binascii.hexlify(self.raw), 'ascii')
 
     def __repr__(self):
-        return 'Chunk({id}, {data})'.format(id=repr(self.id), 
-                data=repr(bytes(self)[8:]))
+        return 'Chunk({id}, {data})'.format(
+            id=repr(self.id), data=repr(bytes(self)[8:]))
 
 
 def _var_int_parse(source):
@@ -1655,7 +1656,7 @@ def _var_int_bytes(value):
     array[0] = array[0] & 0x7f
     array = reversed(array)
     return bytes(array)
-            
+
 
 def _name_to_desc(name):
     """Convert a name (e.g.: 'NoteOn') to a description (e.g.: 'Note On')."""
@@ -1673,170 +1674,170 @@ def _name_to_desc(name):
 class MIDIError(Exception):
     """
     An exception raised when parsing fails or at an illegal operation.
-    
+
     MIDIError is a thin wrapper for Exception. A MIDIError raised by the midi
     module will contain one argument: a string explaining what went wrong.
     """
 
 
 ChannelEvent._events = {
-        0x80: NoteOff,
-        0x90: NoteOn,
-        0xa0: NoteAftertouch,
-        0xb0: ControlChange,
-        0xc0: ProgramChange,
-        0xd0: ChannelAftertouch,
-        0xe0: PitchBend }
+    0x80: NoteOff,
+    0x90: NoteOn,
+    0xa0: NoteAftertouch,
+    0xb0: ControlChange,
+    0xc0: ProgramChange,
+    0xd0: ChannelAftertouch,
+    0xe0: PitchBend}
 ChannelEvent._types = {
-        value: key for key, value in ChannelEvent._events.items()}
+    value: key for key, value in ChannelEvent._events.items()}
 
 MetaEvent._events = {
-        0x00: SequenceNumber,
-        0x01: Text,
-        0x02: Copyright,
-        0x03: Name,
-        0x04: ProgramName,
-        0x05: Lyrics,
-        0x06: Marker,
-        0x07: CuePoint,
-        0x20: ChannelPrefix,
-        0x2f: EndTrack,
-        0x51: SetTempo,
-        0x54: SMPTEOffset,
-        0x58: SetTimeSignature,
-        0x59: SetKeySignature,
-        0x7f: ProprietaryEvent }
+    0x00: SequenceNumber,
+    0x01: Text,
+    0x02: Copyright,
+    0x03: Name,
+    0x04: ProgramName,
+    0x05: Lyrics,
+    0x06: Marker,
+    0x07: CuePoint,
+    0x20: ChannelPrefix,
+    0x2f: EndTrack,
+    0x51: SetTempo,
+    0x54: SMPTEOffset,
+    0x58: SetTimeSignature,
+    0x59: SetKeySignature,
+    0x7f: ProprietaryEvent}
 MetaEvent._types = {value: key for key, value in MetaEvent._events.items()}
 
 Program._descs = {
-        1: 'Acoustic Grand Piano',
-        2: 'Bright Acoustic Piano',
-        3: 'Electric Grand Piano',
-        4: 'Honky Tonk Piano',
-        5: 'Electric Piano 1',
-        6: 'Electric Piano 2',
-        7: 'Harpsicord',
-        8: 'Clavient',
-        9: 'Celesta',
-        10: 'Glockenspiel',
-        11: 'Music Box',
-        12: 'Vibraphone',
-        13: 'Marimba',
-        14: 'Xylophone',
-        15: 'Tubular Bells',
-        16: 'Dulcimer',
-        17: 'Drawbar Organ',
-        18: 'Precussive Organ',
-        19: 'Rock Organ',
-        20: 'Church Organ',
-        21: 'Reed Organ',
-        22: 'Accordion',
-        23: 'Harmonica',
-        24: 'Tango Accordion',
-        25: 'Acoustic Guitar (Nylon)',
-        26: 'Acoustic Guitar (Steel)',
-        27: 'Electric Guitar (Jazz)',
-        28: 'Electric Guitar (Clean)',
-        29: 'Electric Guitar (Muted)',
-        30: 'Overdriven Guitar',
-        31: 'Distortion Guitat',
-        32: 'Guitar Harmonics',
-        33: 'Acoustic Bass',
-        34: 'Electric Bass (Finger)',
-        35: 'Electric Bass (Pick)',
-        36: 'Fretless Bass',
-        37: 'Slap Bass 1',
-        38: 'Slap Bass 2',
-        39: 'Synth Bass 1',
-        40: 'Synth Bass 2',
-        41: 'Violin',
-        42: 'Viola',
-        43: 'Cello',
-        44: 'Contrabass',
-        45: 'Tremolo Strings',
-        46: 'Pizzicato Strings',
-        47: 'Orchestral Harp',
-        48: 'Timpani',
-        49: 'String Ensemble 1',
-        50: 'String Ensemble 2',
-        51: 'Synth Strings 1',
-        52: 'Synth Strings 2',
-        53: 'Choir Aahs',
-        54: 'Choir Oohs',
-        55: 'Synth Choir',
-        56: 'Orchestra Hit',
-        57: 'Trumpet',
-        58: 'Trombone',
-        59: 'Tuba',
-        60: 'Muted Trumpet',
-        61: 'French Horn',
-        62: 'Brass Section',
-        63: 'Synth Brass 1',
-        64: 'Synth Brass 2',
-        65: 'Soprano Sax',
-        66: 'Alto Sax',
-        67: 'Tenor Sax',
-        68: 'Baritone Sax',
-        69: 'Oboe',
-        70: 'English Horn',
-        71: 'Bassoon',
-        72: 'Clarinet',
-        73: 'Piccolo',
-        74: 'Flute',
-        75: 'Recorder',
-        76: 'Pan Flute',
-        77: 'Brown Bottle',
-        78: 'Sakuhachi',
-        79: 'Whistle',
-        80: 'Ocarina',
-        81: 'Square Lead',
-        82: 'Sawtooth Lead',
-        83: 'Calliope Lead',
-        84: 'Chiff Lead',
-        85: 'Charang Lead',
-        86: 'Voice Lead',
-        87: 'Fifths Lead',
-        88: 'Bass Lead',
-        89: 'New Age Pad',
-        90: 'Warm Pad',
-        91: 'Polysynth Pad',
-        92: 'Choir Pad',
-        93: 'Bowed Glass Pad',
-        94: 'Metallic Pad',
-        95: 'Halo Pad',
-        96: 'Sweep Pad',
-        97: 'Rain',
-        98: 'Soundtrack',
-        99: 'Crystal',
-        100: 'Atmosphere',
-        101: 'Brightness',
-        102: 'Goblin',
-        103: 'Echo',
-        104: 'Sci-Fi',
-        105: 'Sitar',
-        106: 'Banjo',
-        107: 'Shamisen',
-        108: 'Koto',
-        109: 'Kalimba',
-        110: 'Bagpipe',
-        111: 'Fiddle',
-        112: 'Shanai',
-        113: 'Tinkle Bell',
-        114: 'Agogo',
-        115: 'Steel Drums',
-        116: 'Woodblock',
-        117: 'Taiko Drum',
-        118: 'Melodic Tom',
-        119: 'Synth Drum',
-        120: 'Reverse Cymbal',
-        121: 'Guitar Fret Noise',
-        122: 'Breath Noise',
-        123: 'Seahorse',
-        124: 'Bird Tweet',
-        125: 'Telephone',
-        126: 'Helicopter',
-        127: 'Applause',
-        128: 'Gunshot'}
+    1: 'Acoustic Grand Piano',
+    2: 'Bright Acoustic Piano',
+    3: 'Electric Grand Piano',
+    4: 'Honky Tonk Piano',
+    5: 'Electric Piano 1',
+    6: 'Electric Piano 2',
+    7: 'Harpsicord',
+    8: 'Clavient',
+    9: 'Celesta',
+    10: 'Glockenspiel',
+    11: 'Music Box',
+    12: 'Vibraphone',
+    13: 'Marimba',
+    14: 'Xylophone',
+    15: 'Tubular Bells',
+    16: 'Dulcimer',
+    17: 'Drawbar Organ',
+    18: 'Precussive Organ',
+    19: 'Rock Organ',
+    20: 'Church Organ',
+    21: 'Reed Organ',
+    22: 'Accordion',
+    23: 'Harmonica',
+    24: 'Tango Accordion',
+    25: 'Acoustic Guitar (Nylon)',
+    26: 'Acoustic Guitar (Steel)',
+    27: 'Electric Guitar (Jazz)',
+    28: 'Electric Guitar (Clean)',
+    29: 'Electric Guitar (Muted)',
+    30: 'Overdriven Guitar',
+    31: 'Distortion Guitat',
+    32: 'Guitar Harmonics',
+    33: 'Acoustic Bass',
+    34: 'Electric Bass (Finger)',
+    35: 'Electric Bass (Pick)',
+    36: 'Fretless Bass',
+    37: 'Slap Bass 1',
+    38: 'Slap Bass 2',
+    39: 'Synth Bass 1',
+    40: 'Synth Bass 2',
+    41: 'Violin',
+    42: 'Viola',
+    43: 'Cello',
+    44: 'Contrabass',
+    45: 'Tremolo Strings',
+    46: 'Pizzicato Strings',
+    47: 'Orchestral Harp',
+    48: 'Timpani',
+    49: 'String Ensemble 1',
+    50: 'String Ensemble 2',
+    51: 'Synth Strings 1',
+    52: 'Synth Strings 2',
+    53: 'Choir Aahs',
+    54: 'Choir Oohs',
+    55: 'Synth Choir',
+    56: 'Orchestra Hit',
+    57: 'Trumpet',
+    58: 'Trombone',
+    59: 'Tuba',
+    60: 'Muted Trumpet',
+    61: 'French Horn',
+    62: 'Brass Section',
+    63: 'Synth Brass 1',
+    64: 'Synth Brass 2',
+    65: 'Soprano Sax',
+    66: 'Alto Sax',
+    67: 'Tenor Sax',
+    68: 'Baritone Sax',
+    69: 'Oboe',
+    70: 'English Horn',
+    71: 'Bassoon',
+    72: 'Clarinet',
+    73: 'Piccolo',
+    74: 'Flute',
+    75: 'Recorder',
+    76: 'Pan Flute',
+    77: 'Brown Bottle',
+    78: 'Sakuhachi',
+    79: 'Whistle',
+    80: 'Ocarina',
+    81: 'Square Lead',
+    82: 'Sawtooth Lead',
+    83: 'Calliope Lead',
+    84: 'Chiff Lead',
+    85: 'Charang Lead',
+    86: 'Voice Lead',
+    87: 'Fifths Lead',
+    88: 'Bass Lead',
+    89: 'New Age Pad',
+    90: 'Warm Pad',
+    91: 'Polysynth Pad',
+    92: 'Choir Pad',
+    93: 'Bowed Glass Pad',
+    94: 'Metallic Pad',
+    95: 'Halo Pad',
+    96: 'Sweep Pad',
+    97: 'Rain',
+    98: 'Soundtrack',
+    99: 'Crystal',
+    100: 'Atmosphere',
+    101: 'Brightness',
+    102: 'Goblin',
+    103: 'Echo',
+    104: 'Sci-Fi',
+    105: 'Sitar',
+    106: 'Banjo',
+    107: 'Shamisen',
+    108: 'Koto',
+    109: 'Kalimba',
+    110: 'Bagpipe',
+    111: 'Fiddle',
+    112: 'Shanai',
+    113: 'Tinkle Bell',
+    114: 'Agogo',
+    115: 'Steel Drums',
+    116: 'Woodblock',
+    117: 'Taiko Drum',
+    118: 'Melodic Tom',
+    119: 'Synth Drum',
+    120: 'Reverse Cymbal',
+    121: 'Guitar Fret Noise',
+    122: 'Breath Noise',
+    123: 'Seahorse',
+    124: 'Bird Tweet',
+    125: 'Telephone',
+    126: 'Helicopter',
+    127: 'Applause',
+    128: 'Gunshot'}
 
 Program._names = dict()
 for key, value in Program._descs.items():
@@ -1844,9 +1845,8 @@ for key, value in Program._descs.items():
 
 Program._desc_numbers = {value: key for key, value in Program._descs.items()}
 Program._lower_numbers = {
-        value.lower(): key for key, value in Program._names.items()}
+    value.lower(): key for key, value in Program._names.items()}
 del key, value
 
 Program.names = Program._names.values()
 Program.descs = Program._descs.values()
-
