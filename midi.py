@@ -986,7 +986,10 @@ class MetaEvent(Event):
         """Delegate parser method. Called by Event.parse."""
         if cls == MetaEvent:
             type = next(source)
-            return cls._events[type]._parse(source)
+            try:
+                return cls._events[type]._parse(source)
+            except KeyError:
+                raise MIDIError('Unknown Meta Event type: {0:X}.'.format(type))
         else:
             length = _var_int_parse(source)
             data = bytearray()
